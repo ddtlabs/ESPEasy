@@ -18,3 +18,22 @@ More information about FHEM update can be found here:
 [FHEMWIKI](http://www.fhemwiki.de/wiki/Update)
 
 [FHEM command reference](http://fhem.de/commandref.html#update)
+
+
+### Release Notes:
+```
+0.1   - public release
+0.1.1 - added internal timer to poll GPIO status
+      - added attribut interval
+      - added attribut pollGPIOs
+      - improved logging
+      - added esp command "status"
+      - added statusRequest
+      - commands are case insensitive, now
+      - updated command reference
+      - delete unknown readings
+0.1.2 - renamed attribut interval to Interval
+      - presence check
+      - added statusRequest cmd
+      - added forgotten longpulse command
+```
