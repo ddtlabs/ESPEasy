@@ -1,11 +1,11 @@
 # ESPEasy
 ### FHEM Module To Control ESPEasy
 
-To bind this module into FHEM update service use the Fhem following commands:
+To bind this module into FHEM update service use the FHEM following commands:
 * `update add https://raw.githubusercontent.com/ddtlabs/ESPEasy/master/controls_ESPEasy.txt`
 * `update` 
 
-To remove this module from FHEM update service use the Fhem following command:
+To remove this module from FHEM update service use the FHEM following command:
 * `update delete https://raw.githubusercontent.com/ddtlabs/ESPEasy/master/controls_ESPEasy.txt`
 
 To install only once (no automatic updates via FHEM update command):
