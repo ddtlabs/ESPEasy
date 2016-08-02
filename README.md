@@ -14,5 +14,7 @@ To install only once (no automatic updates via FHEM update command):
 Or just download the module and copy it to your FHEM-Modul folder.
 
 More information about FHEM update can be found here:
+
 [FHEMWIKI](http://www.fhemwiki.de/wiki/Update)
+
 [FHEM command reference](http://fhem.de/commandref.html#update)
