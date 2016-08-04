@@ -9,7 +9,7 @@ To remove this module from FHEM update service use the FHEM following command:
 * `update delete https://raw.githubusercontent.com/ddtlabs/ESPEasy/master/controls_ESPEasy.txt`
 
 To install only once (no automatic updates via FHEM update command):
-* `update https://raw.githubusercontent.com/ddtlabs/ESPEasy/master/controls_ESPEasy.txt`
+* `update all https://raw.githubusercontent.com/ddtlabs/ESPEasy/master/controls_ESPEasy.txt`
 
 Or just download the module and copy it to your FHEM-Modul folder.
 
