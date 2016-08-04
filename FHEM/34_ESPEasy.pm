@@ -34,10 +34,19 @@
 #                    - call commands are case insensitive, now
 #                    - updated command reference
 #                    - delete unknown readings
-# 2016-07-29  0.1.2  - renamed attribut interval to Interval
+# 2016-07-31  0.1.2  - renamed attribut interval to Interval
 #                    - presence check
 #                    - added statusRequest cmd
 #                    - added forgotten longpulse command
+# 2016-08-03  0.1.3  - added internal VERSION
+#                    - moved internal URLCMD to $hash->{helper}
+#                    - added pin mapping for Wemos D1 mini, NodeMCU, ... 
+#                      within set commands
+#                    - added state mapping (on->1 off->0) within all set commands
+#                    - added set command "clearReadings" (GPIO readings will be wiped out)
+#                    - added get command "pinMap" (displays pin mapping)
+#                    - show usage if there are too few arguments
+#                    - command reference adopted
 #
 #   Credit goes to:
 #   - ESPEasy Project
@@ -51,9 +60,12 @@ use warnings;
 use Data::Dumper;
 use HttpUtils;
 
-my $ESPEasy_version = "0.1.2";
+my $ESPEasy_version = "0.1.3";
 my $ESPEasy_desc    = 'Control ESP8266/ESPEasy';
 
+# ------------------------------------------------------------------------------
+# "setCmds" => "number of parameters"
+# ------------------------------------------------------------------------------
 my %ESPEasy_setCmds = (
   "gpio"           => "2",
   "pwm"            => "2",
@@ -70,35 +82,58 @@ my %ESPEasy_setCmds = (
   "pcfpulse"       => "3",
   "pcflongpulse"   => "3",
   "status"         => "2",
-  "statusrequest"  => "0",
-  "help"           => "1",
-  "presencecheck"  => "0"
+  "statusrequest"  => "0", 
+  "presencecheck"  => "0",
+  "clearreadings"  => "0",
+  "help"           => "1"
 );
 
-
 # ------------------------------------------------------------------------------
-# corresponding usage for set cmds: "setCmds" => "usage"
+# "setCmds" => "syntax", pin mapping will parse for <pin> position
 # ------------------------------------------------------------------------------
-
 my %ESPEasy_setCmdsUsage = (
-  "gpio"           => "gpio <pin> <0|1>",
+  "gpio"           => "gpio <pin> <0|1|off|on>",
   "pwm"            => "pwm <pin> <level>",
-  "pulse"          => "pulse <pin> <state> <duration>",
-  "longpulse"      => "longpulse <pin> <state> <duration>",
-  "servo"          => "Servo <servo no> <pin> <position>",
+  "pulse"          => "pulse <pin> <0|1|off|on> <duration>",
+  "longpulse"      => "longpulse <pin> <0|1|off|on> <duration>",
+  "servo"          => "Servo <servoNo> <pin> <position>",
   "lcd"            => "lcd <row> <col> <text>",
   "lcdcmd"         => "lcdcmd <on|off|clear>",
-  "mcpgpio"        => "mcpgpio <pin> <0|1>",
+  "mcpgpio"        => "mcpgpio <pin> <0|1|off|on>",
   "oled"           => "oled <row> <col> <text>",
   "oledcmd"        => "pcapwm <on|off|clear>",
   "pcapwm"         => "pcapwm <pin> <Level>",
-  "pcfgpio"        => "pcfgpio <pin> <0|1>",
-  "pcfpulse"       => "---missing docu---",              # missing docu
-  "pcflongPulse"   => "---missing docu---",              # missing docu
+  "pcfgpio"        => "pcfgpio <pin> <0|1|off|on>",
+  "pcfpulse"       => "pcfpulse <pin> <0|1|off|on> <duration>",    #missing docu
+  "pcflongPulse"   => "pcflongPulse <pin> <0|1|off|on> <duration>",#missing docu
   "status"         => "status <device> <pin>",
+
   "statusrequest"  => "statusRequest",
-  "presencecheck"  => "presencecheck",
+  "presencecheck"  => "presenceCheck",
+  "clearreadings"  => "clearReadings",
   "help"           => "help <".join("|", sort keys %ESPEasy_setCmds).">"
+);
+
+# ------------------------------------------------------------------------------
+# pin names can be used instead of gpio numbers.
+# ------------------------------------------------------------------------------
+my %ESPEasy_pinMap = (
+  "D0"   => 16, 
+  "D1"   => 5, 
+  "D2"   => 4,
+  "D3"   => 0,
+  "D4"   => 2,
+  "D5"   => 14,
+  "D6"   => 12,
+  "D7"   => 13,
+  "D8"   => 15,
+  "D9"   => 3,
+  "D10"  => 1,
+
+  "RX"   => 3,
+  "TX"   => 1,
+  "SD2"  => 9,
+  "SD3"  => 10
 );
 
 
@@ -121,7 +156,6 @@ sub ESPEasy_Initialize($)
                           "pollGPIOs ".
                           "debug ".
                           $readingFnAttributes;
-
 }
 
 
@@ -146,13 +180,15 @@ sub ESPEasy_Define($$)  # only called when defined, not on reload.
   }
 
   $hash->{PORT} = !$a[3] ? 80 : $a[3];
-  $hash->{URLCMD} = "/control?cmd=";
+  $hash->{VERSION} = $ESPEasy_version;
+  $hash->{helper}{urlcmd} = "/control?cmd=";
 	$hash->{helper}{noPm_JSON} = 1 if (ESPEasy_isPmInstalled($hash,"JSON"));
 
 	readingsSingleUpdate($hash, 'state', 'opened',1);
   Log3 $hash->{NAME}, 2, "ESPEasy: opened device $name -> host:$hash->{HOST}:".
                          "$hash->{PORT}";
 
+  InternalTimer(gettimeofday()+.1, "ESPEasy_deleteReadings", $hash);
   InternalTimer(gettimeofday()+10, "ESPEasy_statusRequest", $hash);
   return undef;
 }
@@ -188,6 +224,7 @@ sub ESPEasy_Delete($$)
   return undef;
 }
 
+
 # ------------------------------------------------------------------------------
 sub ESPEasy_Attr(@)
 {
@@ -201,7 +238,7 @@ sub ESPEasy_Attr(@)
     $ret="0,1" if ($cmd eq "set" && not $aVal =~ /(0|1)/);
     if ($cmd eq "set" && $aVal == 1) {
       Log3 $name, 3,"$type: $name is disabled";
-      ESPEasy_delReadings($hash);
+      ESPEasy_deleteReadings($hash);
       ESPEasy_resetTimer($hash,"stop");
       readingsSingleUpdate($hash, "state", "disabled",1);
     }
@@ -247,8 +284,16 @@ sub ESPEasy_Get($@)
   my $reading = $a[1];
   my $ret;
 
-  if(exists($hash->{READINGS}{$reading})) {
-    if(defined($hash->{READINGS}{$reading})) {
+  if (lc $reading eq "pinmap") {
+    $ret .= "pin mapping:\n";
+    foreach (sort keys %ESPEasy_pinMap) {
+      $ret .= $_." " x (5-length $_ ) ."=> $ESPEasy_pinMap{$_}\n";
+    }
+    return $ret;
+  }
+
+  elsif (exists($hash->{READINGS}{$reading})) {
+    if (defined($hash->{READINGS}{$reading})) {
       return $hash->{READINGS}{$reading}{VAL};
     }
     else {
@@ -259,9 +304,10 @@ sub ESPEasy_Get($@)
   else {
     $ret = "unknown argument $reading, choose one of";
     foreach my $reading (sort keys %{$hash->{READINGS}}) {
-      $ret .= " $reading:noArg" if ($reading ne "firmware");
+      $ret .= " $reading:noArg";
     }
-    return $ret;
+    
+    return $ret . " pinMap:noArg";
   }
 }
 
@@ -270,23 +316,44 @@ sub ESPEasy_Get($@)
 sub ESPEasy_Set($$@)
 {
   my ($hash, $name, $cmd, @params) = @_;
-  my $self = ESPEasy_whoami();
+  my ($type,$self) = ($hash->{TYPE},ESPEasy_whoami());
   $cmd = lc($cmd) if $cmd;
 
   Log3 $hash->{NAME}, 5, "$name: $self() got: name:$name, cmd:$cmd, ".
                          "params:".join(" ",@params) if ($cmd ne "?" && AttrVal($name,"debug","") ne "");
 
   return if (IsDisabled $name);
-  return "'set $name $cmd' needs at least $ESPEasy_setCmds{$cmd} parameter"
-    if($ESPEasy_setCmds{$cmd} && scalar @params < $ESPEasy_setCmds{$cmd});
 
+  # are there all required argumets?
+  if($ESPEasy_setCmds{$cmd} && scalar @params < $ESPEasy_setCmds{$cmd}) {
+    Log3 $name, 1, "$type: Missing argument: 'set $name $cmd ".join(" ",@params)."'";
+    return "Missing argument: $cmd needs at least $ESPEasy_setCmds{$cmd} ".
+           "parameter(s)\n"."Usage: 'set $name $ESPEasy_setCmdsUsage{$cmd}'";
+  }
+
+  # handle unknown cmds
   if(!exists $ESPEasy_setCmds{$cmd}) {
     my @cList = sort keys %ESPEasy_setCmds;
     my $clist = join(" ", @cList);
     my $hlist = join(",", @cList);
     $clist =~ s/help/help:$hlist/; # add all cmds as params to help cmd
-
     return "Unknown argument $cmd, choose one of ". $clist;
+  }
+
+  # pin mapping (eg. D8 -> 15)
+  my $pp = ESPEasy_paramPos($cmd,'<pin>');
+  if ($pp && $params[$pp-1] =~ /^[a-zA-Z]/) {
+    Log3 $name, 4, "$type: pin mapping ". uc $params[$pp-1] .
+                   " => $ESPEasy_pinMap{uc $params[$pp-1]}";
+    $params[$pp-1] = $ESPEasy_pinMap{uc $params[$pp-1]};
+  }
+
+  # onOff mapping (on/off -> 1/0)
+  $pp = ESPEasy_paramPos($cmd,'<0|1|off|on>');
+  if ($pp && not($params[$pp-1] =~ /^0|1$/)) {
+    my $state = ($params[$pp-1] eq "off") ? 0 : 1;
+    Log3 $name, 4, "$type: onOff mapping ". $params[$pp-1]." => $state";
+    $params[$pp-1] = $state;
   }
 
   if ($cmd eq "help") {
@@ -302,6 +369,11 @@ sub ESPEasy_Set($$@)
 
   if ($cmd eq "presencecheck") {
     ESPEasy_checkPresence($hash);
+    return undef;
+  }
+
+  if ($cmd eq "clearreadings") {
+    ESPEasy_deleteReadings($hash);
     return undef;
   }
 
@@ -343,7 +415,7 @@ sub ESPEasy_httpRequest($$@)
   Log3 $name, 4, "$type: set $name $cmd,$plist";
 
   $cmd = $cmd."," if $params[0];
-  my $url = "http://".$hash->{HOST}.":".$hash->{PORT}.$hash->{URLCMD}.$cmd.$plist;
+  my $url = "http://".$hash->{HOST}.":".$hash->{PORT}.$hash->{helper}{urlcmd}.$cmd.$plist;
 
   Log3 $name, 5, "$type: url => $url";
 
@@ -372,11 +444,10 @@ sub ESPEasy_httpRequestParse($$$)
   my $hash = $param->{hash};
   my ($name,$type,$self) = ($hash->{NAME},$hash->{TYPE},ESPEasy_whoami());
 
-#todo: present absent
-
   if ($err ne "" && ReadingsVal($name,"presence","???") ne "absent") {
     Log3 $name, 4, "$type: $name error: $err";
     Log3 $name, 4, "$type: $name presence: absent";
+    ESPEasy_deleteReadings($hash);
     readingsSingleUpdate($hash, 'presence', 'absent',1);
   }
 
@@ -395,7 +466,7 @@ sub ESPEasy_httpRequestParse($$$)
         my %res = %{decode_json($data)};
         Log3 $name, 4, "$type: $name $param->{cmd}$param->{plist} => mode:$res{mode} state:$res{state}";
 
-        $res{state} = ($res{state} == 1) ? "on" : "off" if $res{mode} =~ /^output$/;
+        $res{state} = ($res{state} == 1) ? "on" : "off" if $res{mode} =~ /^output|input$/;
         readingsBeginUpdate($hash);
         readingsBulkUpdate($hash, "GPIO".$res{pin}."_mode", $res{mode});
         readingsBulkUpdate($hash, "GPIO".$res{pin}."_state", $res{state});
@@ -408,8 +479,8 @@ sub ESPEasy_httpRequestParse($$$)
       else { # no json returned
         Log3 $name, 2, "$type: $name $param->{cmd}$param->{plist} => $data";
         if ($param->{plist} =~/^gpio,(\d+)/) {
-          ESPEasy_delReadings($hash,"GPIO".$1."_mode");
-          ESPEasy_delReadings($hash,"GPIO".$1."_state");
+          ESPEasy_deleteReadings($hash,"GPIO".$1."_mode");
+          ESPEasy_deleteReadings($hash,"GPIO".$1."_state");
         }
       }
     }
@@ -457,6 +528,7 @@ sub ESPEasy_checkPresenceParse($$$)
   if ($err ne "" && ReadingsVal($name,"presence","???") ne "absent") {
     Log3 $name, 4, "$type: $name error: $err";
     Log3 $name, 4, "$type: $name presence: absent";
+    ESPEasy_deleteReadings($hash);
     readingsSingleUpdate($hash, 'presence', 'absent',1);
   }
 
@@ -490,7 +562,7 @@ sub ESPEasy_resetTimer($;$)
 
 
 # ------------------------------------------------------------------------------
-sub ESPEasy_delReadings($;$)
+sub ESPEasy_deleteReadings($;$)
 {
   my ($hash,$reading) = @_;
   my ($name,$type) = ($hash->{NAME},$hash->{TYPE});
@@ -516,6 +588,26 @@ sub ESPEasy_delReadings($;$)
   }
 
   return undef;
+}
+
+
+# ------------------------------------------------------------------------------
+sub ESPEasy_paramPos($$)
+{
+  my ($cmd,$search) = @_;
+  my @usage = split(" ",$ESPEasy_setCmdsUsage{$cmd});
+  my $pos = 0;
+  my $i = 0;
+
+  foreach (@usage) {
+    if ($_ eq $search) {
+      $pos = $i;
+      last;
+    }
+    $i++;
+  }
+  
+  return $pos; # return 0 if no match, else position
 }
 
 
@@ -612,6 +704,10 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
     <li>&lt;reading&gt;<br>
       returns the value of the specified reading<br>
       </li><br>
+
+    <li>pinMap<br>
+      returns possible alternative pin names that can be used in commands<br>
+      </li><br>
   </ul>
 
 <br>
@@ -620,7 +716,11 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
   <b>Set </b>
 <br>
   <ul>
-Note: Commands are case insensitive.
+Notes:<br>
+- Commands are case insensitive.<br>
+- Users of Wemos D1 mini or NodeMCU can use Arduino pin names instead of GPIO 
+no: D1 =&gt; GPIO5, D2 =&gt; GPIO4, ...,TX =&gt; GPIO1 (see: get pinMap)
+- low/high state can be written as 0/1 or on/off
 <br><br>
 
 <li>Event<br>
@@ -735,7 +835,8 @@ see <a href="http://www.esp8266.nu/index.php/PCA9685">ESPEasy:PCA9685</a>
 <li>PCFLongPulse<br>
 Long pulse control on PCF8574 output pins
 <br>
-see <a href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a> for details
+see <a href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a> for 
+details
 <br>
 </li>
 <br>
@@ -743,7 +844,8 @@ see <a href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a> for de
 <li>PCFPulse<br>
 Pulse control on PCF8574 output pins 
 <br>
-see <a href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a> for details
+see <a href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a> for 
+details
 <br>
 </li>
 <br>
@@ -756,37 +858,44 @@ see <a href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a>
 </li>
 <br>
 
+<li>status<br>
+Request esp device status (eg. gpio)
+<br>
+required values: <code>&lt;device&gt; &lt;pin&gt;</code><br>
+eg: <code>&lt;gpio&gt; &lt;13&gt;</code><br>
+</li>
+<br>
+
 <li>help<br>
 Shows set command usage
 <br>
 required values: <code>
-Debug|Delay|Event|GPIO|IP|PCFLongPulse|PCFPulse|PWM|Publish|
-Pulse|Reboot|Reset|Save|SendTo|SendToHTTP|SendToUDP|Servo|
-Settings|Status|TimerSet|WiFiDisconnect|WiFiKey|WiFiSSID|
-WiFiScan|WifiAPKey|WifiConnect|help|lcd|lcdcmd|mcpgpio|oled|
-oledcmd|pcapwm|pcfgpio|status|statusRequest
-</code><br>
-</li>
-<br>
-
-<li>status<br>
-Shows esp device status (eg. gpio)
-<br>
-required values: <code>
-&lt;device&gt; &lt;pin&gt;
-</code><br>
-eg: <code>
-&lt;gpio&gt; &lt;13&gt;
+Event|GPIO|PCFLongPulse|PCFPulse|PWM|Publish|Pulse|Servo|Status|lcd|lcdcmd|
+mcpgpio|oled|oledcmd|pcapwm|pcfgpio|status|statusRequest|presenceCheck|
+clearReadings|help
 </code><br>
 </li>
 <br>
 
 <li>statusRequest<br>
-Show esp device status (eg. gpio)
+Trigger a statusRequest for configured GPIOs (see attribut pollGPIOs) and a 
+presenceCheck
 <br>
-required values: <code>
-&lt;none&gt;
-</code><br>
+required values: <code>&lt;none&gt;</code><br>
+</li>
+<br>
+
+<li>presenceCheck<br>
+Trigger a presenceCheck
+<br>
+required values: <code>&lt;none&gt;</code><br>
+</li>
+<br>
+
+<li>clearReadings<br>
+Delete all GPIO.* readings
+<br>
+required values: <code>&lt;none&gt;</code><br>
 </li>
 <br>
 

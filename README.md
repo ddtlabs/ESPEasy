@@ -36,4 +36,13 @@ More information about FHEM update can be found here:
       - presence check
       - added statusRequest cmd
       - added forgotten longpulse command
+0.1.3 - added internal VERSION
+      - moved internal URLCMD to $hash->{helper}
+      - added pin mapping for Wemos D1 mini, NodeMCU, ... 
+      - within set commands
+      - added state mapping (on->1 off->0) within all set commands
+      - added set command "clearReadings" (GPIO readings will be wiped out)
+      - added get command "pinMap" (displays pin mapping)
+      - show usage if there are too few arguments
+      - command reference adopted
 ```
