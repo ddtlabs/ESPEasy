@@ -79,15 +79,19 @@ More information about FHEM update can be found here:
 0.4.0  - command reference updated
        - RC1
 
-
 0.4 RC1  - code cleanup
-0.4.1    - improved removing of illegal chars in device + reading names
-         - removed uniqID helper from bridge if undef device (IOwrite)
-         - use peer IP instead of configured IP (could be modified by NAT/PAT)
-         - added http response: 400 Bad Request
-         - added http response: 401 Unauthorized
-         - fixed oledcmd cmd usage string
-         - improved presence detection (incoming requests)
+
+0.4.1  - improved removing of illegal chars in device + reading names
+       - removed uniqID helper from bridge if undef device (IOwrite)
+       - use peer IP instead of configured IP (could be modified by NAT/PAT)
+       - added http response: 400 Bad Request
+       - added http response: 401 Unauthorized
+       - fixed oledcmd cmd usage string
+       - improved presence detection (incoming requests)
+0.4.2  - more unique dispatch separator
+       - moved on|off translation for device type "SWITCH" from
+         ESPEasy Software to this module.
+       - new attribute readingSwitchText
 
 ```
 
@@ -563,6 +567,12 @@ eg: <code>&lt;gpio&gt; &lt;13&gt;</code><br>
       Specifies a suffix for the state reading of GPIOs.
       <br>
       Default: no suffix
+      </li><br>
+    <li>readingSwitchText<br>
+      Use on,off instead of 1,0 for readings if ESP device is a switch.
+      <br>
+      Possible values: 0,1<br>
+      Default: 1 (enabled)
       </li><br>
     <li>setState<br>
       Summarize values in state reading.

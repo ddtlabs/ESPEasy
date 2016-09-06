@@ -77,13 +77,17 @@
 # 2016-08-27  0.3.5  - dispatch ESP paramater to device internals if changed
 #                    - added attribute setState (disable value mapping to state)
 # 2016-08-27  0.4 RC1  - code cleanup
-# 2016-08-29  0.4.1    - improved removing of illegal chars in device + reading names
-#                      - removed uniqID helper from bridge if undef device (IOwrite)
-#                      - use peer IP instead of configured IP (could be modified by NAT/PAT)
-#                      - added http response: 400 Bad Request
-#                      - added http response: 401 Unauthorized
-#                      - fixed oledcmd cmd usage string
-#                      - improved presence detection (incoming requests)
+# 2016-08-29  0.4.1  - improved removing of illegal chars in device + reading names
+#                    - removed uniqID helper from bridge if undef device (IOwrite)
+#                    - use peer IP instead of configured IP (could be modified by NAT/PAT)
+#                    - added http response: 400 Bad Request
+#                    - added http response: 401 Unauthorized
+#                    - fixed oledcmd cmd usage string
+#                    - improved presence detection (incoming requests)
+# 2016-09-05  0.4.2  - more unique dispatch separator
+#                    - moved on|off translation for device type "SWITCH" from
+#                      ESPEasy Software to this module.
+#                    - new attribute readingSwitchText
 #
 #
 #   Credit goes to:
@@ -101,9 +105,9 @@ use TcpServerUtils;
 use HttpUtils;
 use SetExtensions;
 
-my $ESPEasy_version         = "0.4.1";
-my $ESPEasy_minESPEasyBuild = 126;
-my $ESPEasy_minJsonVersion  = 1.0;
+my $ESPEasy_version         = "0.4.2";
+my $ESPEasy_minESPEasyBuild = 128;
+my $ESPEasy_minJsonVersion  = 1.02;
 
 # ------------------------------------------------------------------------------
 # "setCmds" => "min. number of parameters"
@@ -235,6 +239,7 @@ sub ESPEasy_Initialize($)
                         ."authentication:1,0 "
                         ."readingPrefixGPIO "
                         ."readingSuffixGPIOState "
+                        ."readingSwitchText:1,0 "
                         ."httpReqTimeout "
                         ."uniqIDs:1,0 "
                         ."setState:1,0 "
@@ -571,7 +576,8 @@ sub ESPEasy_Read($) {
                    $uniqIDs.
                    $json->{data}{SENSOR}{$vKey}{deviceName}."::".
                    $json->{data}{SENSOR}{$vKey}{valueName}."::".
-                   $json->{data}{SENSOR}{$vKey}{value};
+                   $json->{data}{SENSOR}{$vKey}{value}."::".
+                   $json->{data}{SENSOR}{$vKey}{type};
         if ($dmsg =~ m/(::::)|(::$)/) {
           Log3 $bname, 2, "$btype $bname: WARNING: device name, value name or ".
                   "value not received ($peer). Skipping data.";
@@ -734,7 +740,7 @@ sub ESPEasy_Attr(@)
   my $ret = undef;
 
   # device attributes
-  if ($aName =~ /(Interval|pollGPIOs|IODev|readingPrefixGPIO|readingSuffixGPIOState|setState)/
+  if ($aName =~ /(Interval|pollGPIOs|IODev|readingPrefixGPIO|readingSuffixGPIOState|setState|readingSwitchText)/
     && $hash->{SUBTYPE} eq "bridge") {
     Log3 $name, 1, "$type $name: attribut '$aName' can not be used by bridge";
     return "$type: attribut '$aName' can not be used by bridge";  
@@ -773,6 +779,8 @@ sub ESPEasy_Attr(@)
   elsif ($aName eq "authentication") {
     $ret="0,1" if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/)}
   elsif ($aName eq "uniqIDs") {
+    $ret="0,1" if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/)}
+  elsif ($aName eq "readingSwitchText") {
     $ret="0,1" if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/)}
   elsif ($aName eq "setState") {
     $ret="0,1" if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/)}
@@ -847,15 +855,16 @@ sub ESPEasy_dispatch($$@) #called by bridge -> send to logical devices
   my($hash,$host,@cmds) = @_;
   my $name = $hash->{NAME};
   my $type = $hash->{TYPE};
-  my ($fhemcmd,$ident,$reading,$value);
+  my ($fhemcmd,$ident,$reading,$value,$vType);
 
   return if (IsDisabled $name);  
     
   foreach my $cmd (@cmds) {
-    ($fhemcmd,$ident,$reading,$value) = split("::",$cmd);
+    ($fhemcmd,$ident,$reading,$value,$vType) = split("::",$cmd);
+    $vType = 0 if (!$vType);
     my $as = (AttrVal($name,"autosave",AttrVal("global","autosave",1))) ? 1 : 0;
     my $ac = (AttrVal($name,"autocreate",AttrVal("global","autoload_undefined_devices",1))) ? 1 : 0;
-    my $msg = "$ident:$host:$ac:$as:$fhemcmd|$reading|$value";
+    my $msg = "$ident::$host::$ac::$as::$fhemcmd||$reading||$value||$vType";
 
     Log3 $name, 5, "$type $name: dispatch: $msg";
     Dispatch($hash, $msg, undef);
@@ -875,14 +884,14 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
   my $self   = ESPEasy_whoami()."()";
 
   # 1:ident 2:ip 3:autocreate 4:autosave 5:data
-  my ($ident,$ip,$ac,$as,$v) = split(":",$msg);
+  my ($ident,$ip,$ac,$as,$v) = split("::",$msg);
   #Log3 undef, 5, "$type $IOname: $self got: $msg";
 
   return undef if !$ident || $ident eq "";
 
   my $name;
-  my @v = split("\\|\\|",$v);
-  
+  my @v = split("\\|\\|\\|",$v);
+    
   # look in each $defs{$d}{IDENT} for $ident to get device name.
   foreach my $d (keys %defs) {
     next if($defs{$d}{TYPE} ne "ESPEasy");
@@ -909,7 +918,7 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
   if (defined $hash && $hash->{TYPE} eq "ESPEasy"
   && $hash->{SUBTYPE} eq "device") {
     foreach (@v) {
-      my ($fhemcmd,$reading,$value) = split("\\|",$_);
+      my ($fhemcmd,$reading,$value,$vType) = split("\\|\\|",$_);
 
       # reading prefix replacement
       my $replace = '"'.AttrVal($name,"readingPrefixGPIO","GPIO").'"';
@@ -919,6 +928,9 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
         # reading suffix replacement only for setreading
         $replace = '"'.AttrVal($name,"readingSuffixGPIOState","").'"';
         $reading =~ s/_state$/$replace/ee;
+        $value = ($value eq "1") ? "on" : "off" 
+          if ($vType == 10 && AttrVal($name,"readingSwitchText",1) && $value =~ /^(0|1)$/); # switch
+#          if ($vType == 10 && AttrVal($name,"readingSwitchText",1)); # switch
         readingsSingleUpdate($hash, $reading, $value, 1);
         Log3 $name, 4, "$type $name: $reading: $value";
       }
@@ -1064,13 +1076,16 @@ sub ESPEasy_httpRequestParse($$$)
     Log3 $name, 5, "$type $name: $self() data: \n$data";
     if (!defined $hash->{helper}{noPm_JSON}) {
       if ($data =~ /^{/) { #it is json...
-#        use JSON;
+        # use JSON;
         my %res = %{decode_json($data)};
         Log3 $name, 5, "$type $name: $param->{cmd}$param->{plist} => mode:$res{mode} state:$res{state}";
 
-        $res{state} = ($res{state} == 1) ? "on" : "off" if $res{mode} =~ /^output|input$/;
+        # maps plugin type (answer for set state/gpio) to 
+        my $vType = (defined $res{plugin} && $res{plugin} eq "1") ? "::10" : ""; # 10 = SENSOR_TYPE_SWITCH
+        # will be done in dipatch_parse now
+        #$res{state} = ($res{state} == 1) ? "on" : "off" if $res{mode} =~ /^output|input$/;
         push @dispatchCmd, "setreading::".$param->{ident}."::GPIO".$res{pin}."_mode::".$res{mode};
-        push @dispatchCmd, "setreading::".$param->{ident}."::GPIO".$res{pin}."_state::".$res{state};
+        push @dispatchCmd, "setreading::".$param->{ident}."::GPIO".$res{pin}."_state::".$res{state}.$vType;
         push @dispatchCmd, "setreading::".$param->{ident}."::_lastAction::".$res{log} if $res{log} ne "";
       } #it is json...
 
@@ -1278,9 +1293,10 @@ sub ESPEasy_checkVersions($$$$)
   my ($type,$name) = ($hash->{TYPE},$hash->{NAME});
   my $ov = "_OUTDATED_ESP_VER_$dev";
 
-  if (($ve < $ESPEasy_minESPEasyBuild 
-  || $vj < $ESPEasy_minJsonVersion)
-  && not exists $hash->{$ov}) {
+#  if (($vj < $ESPEasy_minJsonVersion 
+#  || $ve < $ESPEasy_minESPEasyBuild)
+#  && not exists $hash->{$ov}) {
+  if ($vj < $ESPEasy_minJsonVersion && not exists $hash->{$ov}) {
     $hash->{$ov} = "R".$ve."/J".$vj;
     Log3 $name, 2, "$type $name: ESPEasy plugin _C009 ".
                    "(R".$ve."/J".$vj.") is too old. ".
@@ -1864,6 +1880,12 @@ eg: <code>&lt;gpio&gt; &lt;13&gt;</code><br>
       Specifies a suffix for the state reading of GPIOs.
       <br>
       Default: no suffix
+      </li><br>
+    <li>readingSwitchText<br>
+      Use on,off instead of 1,0 for readings if ESP device is a switch.
+      <br>
+      Possible values: 0,1<br>
+      Default: 1 (enabled)
       </li><br>
     <li>setState<br>
       Summarize values in state reading.
