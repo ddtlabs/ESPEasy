@@ -92,6 +92,9 @@ More information about FHEM update can be found here:
        - moved on|off translation for device type "SWITCH" from
          ESPEasy Software to this module.
        - new attribute readingSwitchText
+0.4.3  - bug fix: Use of uninitialized value $ident:: in concatenation (.) or string at 34_ESPEasy.pm line 867.
+         Forum: topic,55728.msg488459.html
+
 
 ```
 

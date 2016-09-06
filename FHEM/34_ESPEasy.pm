@@ -88,6 +88,9 @@
 #                    - moved on|off translation for device type "SWITCH" from
 #                      ESPEasy Software to this module.
 #                    - new attribute readingSwitchText
+# 2016-09-06  0.4.3  - bug fix: Use of uninitialized value $ident:: in 
+#                      concatenation (.) or string at 34_ESPEasy.pm line 867.
+#                      Forum: topic,55728.msg488459.html
 #
 #
 #   Credit goes to:
@@ -103,9 +106,9 @@ use Data::Dumper;
 use MIME::Base64;
 use TcpServerUtils;
 use HttpUtils;
-use SetExtensions;
+#use SetExtensions;
 
-my $ESPEasy_version         = "0.4.2";
+my $ESPEasy_version         = "0.4.3";
 my $ESPEasy_minESPEasyBuild = 128;
 my $ESPEasy_minJsonVersion  = 1.02;
 
@@ -624,7 +627,7 @@ sub ESPEasy_Read($) {
       @cmds = split("%3B",$1); # "%3B" == ";"
       foreach (@cmds) {
         ($cmd,$device,$reading,$value) = split("%20",$_);
-        push(@converted,"$cmd::$device::$reading::$value");
+        push(@converted,$cmd."::".$device."::".$reading."::".$value);
         Log3 $bname, 4, "$btype $bname: received cmd:$cmd device:$device reading:$reading value:$value";
       }
       if (not defined $bhash->{helper}{outdated}{$peer}) {
@@ -864,7 +867,7 @@ sub ESPEasy_dispatch($$@) #called by bridge -> send to logical devices
     $vType = 0 if (!$vType);
     my $as = (AttrVal($name,"autosave",AttrVal("global","autosave",1))) ? 1 : 0;
     my $ac = (AttrVal($name,"autocreate",AttrVal("global","autoload_undefined_devices",1))) ? 1 : 0;
-    my $msg = "$ident::$host::$ac::$as::$fhemcmd||$reading||$value||$vType";
+    my $msg = $ident."::".$host."::".$ac."::".$as."::".$fhemcmd."||".$reading."||".$value."||".$vType;
 
     Log3 $name, 5, "$type $name: dispatch: $msg";
     Dispatch($hash, $msg, undef);
@@ -885,7 +888,8 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
 
   # 1:ident 2:ip 3:autocreate 4:autosave 5:data
   my ($ident,$ip,$ac,$as,$v) = split("::",$msg);
-  #Log3 undef, 5, "$type $IOname: $self got: $msg";
+  Log 5, "$type $IOname: $self got: $msg";
+  
 
   return undef if !$ident || $ident eq "";
 
@@ -908,7 +912,8 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
   }
   elsif (!$name) {
     Log3 $IOname, 2, "$type $IOname: autocreate is disabled (ident: $ident)"
-      if $IOhash->{helper}{$ip}{$ident} ne "noAutocreate";
+      if not defined $IOhash->{helper}{$ip}{$ident} 
+      || $IOhash->{helper}{$ip}{$ident} ne "noAutocreate";
     $IOhash->{helper}{$ip}{$ident} = "noAutocreate";
     return $ident;
   }
@@ -1058,14 +1063,14 @@ sub ESPEasy_httpRequestParse($$$)
        Log3 $name, 2, "$type $name: $param->{ident} error: $err";
     }
     $hash->{helper}{$param->{host}}{presence} = "absent";
-    push @dispatchCmd, "deletereading"."::".$param->{ident}."::"."GPIO.*"."::"."undef";
-    push @dispatchCmd, "setreading"."::".$param->{ident}."::"."presence"."::"."absent";
+    push @dispatchCmd, "deletereading::".$param->{ident}."::GPIO.*::undef";
+    push @dispatchCmd, "setreading::".$param->{ident}."::presence::absent";
   }
 
   elsif ($data ne "") 
   { 
     $hash->{helper}{$param->{host}}{presence} = "present";
-    push @dispatchCmd, "setreading::".$param->{ident}."::"."presence"."::"."present";
+    push @dispatchCmd, "setreading::".$param->{ident}."::presence::present";
 
     if ($param->{cmd} =~ /^(presencecheck)$/) {
       ESPEasy_dispatch($hash,$param->{host},@dispatchCmd);
