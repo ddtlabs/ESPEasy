@@ -1,4 +1,10 @@
-Requirements: ESPEasy R128
+Requirements: ESPEasy R128+
+0.4.4  - behavior of attribute setState (# of characters in state, 0 = disabled)
+       - fixed: Use of uninitialized value in string ne at 9xx.
+0.4.3  - fixed: Use of uninitialized value $ident:: in 867 ff.
+0.4.2  - more unique dispatch separator
+       - moved on|off translation for device type "SWITCH" from ESPEasy Plugin to this module.
+       - new attribute readingSwitchText
 0.4.1  - improved removing of illegal chars in device + reading names
        - removed uniqID helper from bridge if undef device (IOwrite)
        - use peer IP instead of configured IP (could be modified by NAT/PAT)
@@ -6,8 +12,3 @@ Requirements: ESPEasy R128
        - added http response: 401 Unauthorized
        - fixed oledcmd cmd usage string
        - improved presence detection (incoming requests)
-0.4.2  - more unique dispatch separator
-       - moved on|off translation for device type "SWITCH" from
-         ESPEasy Software to this module.
-       - new attribute readingSwitchText
-
