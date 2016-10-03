@@ -1,4 +1,4 @@
-# $Id: 34_ESPEasy.pm 51 2016-10-02 08:30:00Z dev0 $
+# $Id: 34_ESPEasy.pm 52 2016-10-02 08:30:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 / ESPEasy
@@ -130,7 +130,7 @@ use HttpUtils;
 
 my $ESPEasy_minESPEasyBuild = 128;     # informational
 my $ESPEasy_minJsonVersion  = 1.02;    # checked in received data
-my $ESPEasy_version         = 0.51;
+my $ESPEasy_version         = 0.52;
 my $ESPEasy_urlCmd          = "/control?cmd=";
 
 # ------------------------------------------------------------------------------
@@ -566,7 +566,8 @@ sub ESPEasy_Read($) {
   
   # Dump header/content for support without base64(user:pass)
   my $logHeader = { %$header };
-  $logHeader->{Authorization} =~ s/Basic\s.*\s/Basic ***** /;
+  $logHeader->{Authorization} =~ s/Basic\s.*\s/Basic ***** /
+    if defined $logHeader->{Authorization};
   Log3 $bname, 5, "$btype $name: received header: ".Dumper($logHeader) 
     if defined $logHeader;
   Log3 $bname, 5, "$btype $name: received content: $data[1]"
