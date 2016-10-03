@@ -25,6 +25,7 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
 
 <a name="ESPEasy"></a>
 <h3>ESPEasy</h3>
+
 <ul>
   <p>Provides control to ESP8266/ESPEasy</p>
 
@@ -55,6 +56,7 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
 
   <a name="ESPEasydefine"></a>
   <b>Define </b>(bridge)<br><br>
+  
   <ul>
     <code>define &lt;name&gt; ESPEasy bridge &lt;port&gt;</code><br><br>
 
@@ -70,12 +72,14 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
       the range 1025..65535<br>
       eg. <code>8383</code> (ESPEasy FHEM HTTP plugin default)</li><br>
 
-    Example: <code>define ESPBridge ESPEasy bridge 8383</code><br><br>
+    <li>
+      Example:<br>
+      <code>define ESPBridge ESPEasy bridge 8383</code></li><br>
   </ul>
 
   <br><a name="ESPEasyget"></a>
-  <b>Get </b>(bridge)<br>
-  <br>
+  <b>Get </b>(bridge)<br><br>
+  
   <ul>
     <li>&lt;reading&gt;<br>
       returns the value of the specified reading</li>
@@ -91,8 +95,8 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
   </ul>
 
   <br><a name="ESPEasyset"></a>
-  <b>Set </b>(bridge)<br>
-  <br>
+  <b>Set </b>(bridge)<br><br>
+  
   <ul>
     <li>help<br>
       Shows set command usage<br>
@@ -111,10 +115,11 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
 
   <br><a name="ESPEasyattr"></a>
   <b>Attributes </b>(bridge)<br><br>
+  
   <ul>
     <li>authentication<br>
       Used to enable basic authentication for incoming requests<br>
-      Note that user, pass and authentication attribut must be set to activate
+      Note that user, pass and authentication attribute must be set to activate
       basic authentication<br>
       Possible values: 0,1</li><br>
 
@@ -137,6 +142,7 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
       Possible values: 4..60<br>
       Default: 10 seconds</li><br>
       
+    <a name="ESPEasyuniqIDs"></a>
     <li>uniqIDs<br>
       Used to generate unique identifiers (ESPName + DeviceName)<br>
       If you disable this attribut (set to 0) then your logical devices will be
@@ -149,15 +155,15 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
 
   <h3>ESPEasy Device</h3>
 
-  <a name="ESPEasydefine"></a>
+  <a name="ESPEasydefineLogical"></a>
   <b>Define </b>(logical device)<br><br>
+  
   <ul>
-    Notes:<br>
-    - Logical devices will be created automatically if any values are received
-    by the bridge device and autocreate is not disabled. If you configured your
-    ESP in a way that no data is send independently then you have to define
-    logical devices. At least wifi rssi value could be defined to use
-    autocreate.<br><br>
+    Notes: Logical devices will be created automatically if any values are
+    received by the bridge device and autocreate is not disabled. If you
+    configured your ESP in a way that no data is send independently then you
+    have to define logical devices. At least wifi rssi value could be defined
+    to use autocreate.<br><br>
     
     <code>define &lt;name&gt; ESPEasy &lt;ip|fqdn&gt; &lt;port&gt;
     &lt;IODev&gt; &lt;identifier&gt;</code><br><br>
@@ -197,13 +203,14 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
       eg. <code>ESPxx_DHT22</code><br>
       eg. <code>ESPxx</code></li><br>
       
-      Example: 
+    <li>  Example:<br>
       <code>define ESPxx ESPEasy 172.16.4.100 80 ESPBridge EspXX_SensorXX</code>
-      <br><br>
+      </li><br>
   </ul>
 
   <br><a name="ESPEasyget"></a>
   <b>Get </b>(logical device)<br><br>
+  
   <ul>
     <li>&lt;reading&gt;<br>
       returns the value of the specified reading</li><br>
@@ -215,6 +222,7 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
 
   <br><a name="ESPEasyset"></a>
   <b>Set </b>(logical device)<br><br>
+  
   <ul>
     Notes:<br>
     - Commands are case insensitive.<br>
@@ -226,7 +234,7 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
     <br><br>
 
     <li>clearReadings<br>
-      Delete all GPIO.* readings<br>
+      Delete all readings that are auto created by received sensor values<br>
       required values: <code>&lt;none&gt;</code></li><br>
       
     <li>help<br>
@@ -234,8 +242,8 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
       required values: <code>a valid set command</code></li><br>
       
     <li>statusRequest<br>
-      Trigger a statusRequest for configured GPIOs (see attribut pollGPIOs) and 
-      a presenceCheck<br>
+      Trigger a statusRequest for configured GPIOs (see attribut pollGPIOs)
+      and do a presence check<br>
       required values: <code>&lt;none&gt;</code></li><br>
       
     <li>Event<br>
@@ -245,13 +253,13 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
     <li>GPIO<br>
       Direct control of output pins (on/off)<br>
       required arguments: <code>&lt;pin&gt; &lt;0,1&gt;</code><br>
-      see <a href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
+      see <a target="_new" href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
       details</li><br>
       
     <li>PWM<br>
       Direct PWM control of output pins<br>
       required arguments: <code>&lt;pin&gt; &lt;level&gt;</code><br>
-      see <a href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a>
+      see <a target="_new" href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a>
       for details</li><br>
       
     <li>PWMFADE<br>
@@ -265,76 +273,76 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
       Direct pulse control of output pins<br>
       required arguments: <code>&lt;pin&gt; &lt;0,1&gt; &lt;duration&gt;</code>
       <br>
-      see <a href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
+      see <a target="_new" href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
       details</li><br>
       
     <li>LongPulse<br>
       Direct pulse control of output pins<br>
       required arguments: <code>&lt;pin&gt; &lt;0,1&gt; &lt;duration&gt;</code>
       <br>
-      see <a href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
+      see <a target="_new" href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
       details</li><br>
 
     <li>Servo<br>
       Direct control of servo motors<br>
       required arguments: <code>&lt;servoNo&gt; &lt;pin&gt; &lt;position&gt;
       </code><br>
-      see <a href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
+      see <a target="_new" href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
       details</li><br>
       
     <li>lcd<br>
       Write text messages to LCD screen<br>
       required arguments: <code>&lt;row&gt; &lt;col&gt; &lt;text&gt;</code><br>
       see 
-      <a href="http://www.esp8266.nu/index.php/LCDDisplay">ESPEasy:LCDDisplay
+      <a target="_new" href="http://www.esp8266.nu/index.php/LCDDisplay">ESPEasy:LCDDisplay
       </a> for details</li><br>
       
     <li>lcdcmd<br>
       Control LCD screen<br>
       required arguments: <code>&lt;on|off|clear&gt;</code><br>
       see 
-      <a href="http://www.esp8266.nu/index.php/LCDDisplay">ESPEasy:LCDDisplay
+      <a target="_new" href="http://www.esp8266.nu/index.php/LCDDisplay">ESPEasy:LCDDisplay
       </a> for details</li><br>
       
     <li>mcpgpio<br>
       Control MCP23017 output pins<br>
       required arguments: <code>&lt;pin&gt; &lt;0,1&gt;</code><br>
-      see <a href="http://www.esp8266.nu/index.php/MCP23017">ESPEasy:MCP23017
+      see <a target="_new" href="http://www.esp8266.nu/index.php/MCP23017">ESPEasy:MCP23017
       </a>for details</li><br>
       
     <li>oled<br>
       Write text messages to OLED screen<br>
       required arguments: <code>&lt;row&gt; &lt;col&gt; &lt;text&gt;</code><br>
       see
-      <a href="http://www.esp8266.nu/index.php/OLEDDisplay">ESPEasy:OLEDDisplay
+      <a target="_new" href="http://www.esp8266.nu/index.php/OLEDDisplay">ESPEasy:OLEDDisplay
       </a> for details.</li><br>
       
     <li>oledcmd<br>
       Control OLED screen<br>
       required arguments: <code>&lt;on|off|clear&gt;</code><br>
       see 
-      <a href="http://www.esp8266.nu/index.php/OLEDDisplay">ESPEasy:OLEDDisplay
+      <a target="_new" href="http://www.esp8266.nu/index.php/OLEDDisplay">ESPEasy:OLEDDisplay
       </a> for details.</li><br>
       
     <li>pcapwm<br>
       Control PCA9685 pwm pins<br>
       required arguments: <code>&lt;pin&gt; &lt;level&gt;</code><br>
-      see <a href="http://www.esp8266.nu/index.php/PCA9685">ESPEasy:PCA9685</a>
+      see <a target="_new" href="http://www.esp8266.nu/index.php/PCA9685">ESPEasy:PCA9685</a>
       for details</li><br>
       
     <li>PCFLongPulse<br>
       Long pulse control on PCF8574 output pins<br>
-      see <a href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a>
+      see <a target="_new" href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a>
       for details</li><br>
 
     <li>PCFPulse<br>
       Pulse control on PCF8574 output pins<br>
-      see <a href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a>
+      see <a target="_new" href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a>
       for details</li><br>
       
     <li>pcfgpio<br>
       Control PCF8574 output pins<br>
-      see <a href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a>
+      see <a target="_new" href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a>
       </li><br>
       
     <li>raw<br>
@@ -350,21 +358,57 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
 
   <br><a name="ESPEasyattr"></a>
   <b>Attributes</b> (logical device)<br><br>
+
   <ul>
+    <li>adjustValue<br>
+      Used to adjust sensor values<br>
+      Must be space separated list of &lt;reading&gt;:&lt;formula&gt;.<br>
+      Formula can be a simple arithmetic expression like '+20', '-0.5' or
+      '($VALUE-32)*5/9'. Function calls are also possible: 
+      substr(($VALUE-32)*5/9,0,5).<br>
+      The following variables can be used if necessary: 
+      <ul>
+        <li>$VALUE contains the original value</li>
+        <li>$READING contains the reading name</li>
+        <li>$NAME contains the device name</li>
+      </ul>
+      Possible values: space separated list of &lt;reading&gt;:&lt;formula&gt;
+      <br>
+      Default: none<br>
+      Eg. <code>attr ESPxx adjustValue humidity:+0.1 
+      temperature:($VALUE-32)*5/9</code><br>
+      Eg. <code>attr ESPxx adjustValue humidity:my_OwnFunction($VALUE)
+      brightness:*4</code></li><br>
+      
     <li>disable<br>
       Used to disable device<br>
-      Possible values: 0,1</li><br>
+      Possible values: 0,1<br>
+      Default: 0</li><br>
 
-    <li>pollGPIOs<br>
-      Used to enable polling of GPIOs status<br>
-      Possible values: comma separated GPIO number list<br>
-      Eg. <code>13,15</code></li><br>
-      
+    <a name="ESPEasyInterval"></a>
     <li>Interval<br>
-      Used to set polling interval of GPIOs in seconds and presence of ESP<br>
-      Possible values: secs &gt; 10<br>
-      Default: 300
-      Eg. <code>300</code></li><br>
+      Used to set polling interval for presence check and GPIOs in seconds<br>
+      Possible values: secs &gt; 10. 0 will disable this feature.<br>
+      Default: 300</li><br>
+      
+    <a name="ESPEasypollGPIOs"></a>
+    <li>pollGPIOs<br>
+      Used to enable polling for GPIOs status<br>
+      Possible values: comma separated GPIO number list<br>
+      Eg. <code>attr ESPxx pollGPIOs 13,D7,D2</code></li><br>
+      
+    <li>presenceCheck<br>
+      Used to enable/disable presence check for ESPs<br>
+      Presence check determines the presence of a device by readings age. If any
+      reading of a device is newer than <a target="_blank" href="/fhem/docs/commandref.html#ESPEasyInterval">interval</a>
+      seconds than it is marked as being present. This kind of check works for
+      ESP devices in deep sleep too but require at least 1 reading that is
+      updated regularly.<br>
+      If the FHEM device contains values from more than 1 ESP (see Attribute
+      <a target="_blank" href="/fhem/docs/commandref.html#ESPEasyuniqIDs">uniqIDs</a>) than there is an additional
+      presence state: "partial absent (ip)" besides present and absent.<br>
+      Possible values: 0,1<br>
+      Default: 1 (enabled)</li><br>
       
     <li>readingPrefixGPIO<br>
       Specifies a prefix for readings based on GPIO numbers. For example:
@@ -375,7 +419,8 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
       Default: GPIO</li><br>
       
     <li>readingSuffixGPIOState<br>
-      Specifies a suffix for the state reading of GPIOs.<br>
+      Specifies a suffix for the state-reading of GPIOs (see Attribute
+      <a target="_blank" href="/fhem/docs/commandref.html#ESPEasypollGPIOs">pollGPIOs</a>)<br>
       Default: no suffix
     </li><br>
     
@@ -385,10 +430,13 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
       Default: 1 (enabled)</li><br>
       
     <li>setState<br>
-      Summarize values in state reading.<br>
+      Summarize received values in state reading.<br>
       Set to 0 to disable this feature. A positive number determines the number
-      of characters used for reading names.<br>
+      of characters used for reading names. Only readings with an age less than
+      <a target="_blank" href="/fhem/docs/commandref.html#ESPEasyInterval">interval</a> will be considered.<br>
+      Reading state will be updated only if a value has been changed to reduce<br>
+      events.
       Possible values: integer &gt;=0<br>
-      Default: 3</li><br>
+      Default: 3 (enabled with 3 characters abbreviation)</li><br>
   </ul>
 </ul>

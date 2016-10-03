@@ -68,5 +68,25 @@
        - fixed: Use of uninitialized value in string ne at ./FHEM/34_ESPEasy.pm line 9xx.
        - code and command reference cleanup
        - misc logging modifications
+0.4.5  - timestamp of reading state will not be changed if state == opened,present or absent
+       - added internal INTERVAL
+       - Attr Interval can be set 0 to disable presence check and polling
+       - removed deprecated code for old ESPEasy Versions without json support
+       - reworked dispatching values
+       - reworked presence detection (no more polling, check readings age)
+       - added attribut adjustValue (see command ref for details)
+       - added internal ESP_CONFIG -> EspIP:version,sleep,unit
+       - added internal UNIQIDS to devices
+0.4.7  - command reference updated
+0.4.8  - logging adopted
+0.4.9  - fixed check of empty device name, value name and value in received data
+0.5.0  - eval JSON decoding in http response
+       - removed Authorization String from debug log
+       - combined internals logging
+       - check for temporary bridge device in deleteFn and do no IOWrite
+         see: https://forum.fhem.de/index.php/topic,55728.msg497366.html#msg497366
+       - added check that fhem.pl is new enough (11000/2016-03-05)
+         see: https://forum.fhem.de/index.php/topic,55728.msg497094.html#msg497094
+0.5.1  - optimized logging
 
 ```
