@@ -1,4 +1,8 @@
 Requirements: ESPEasy R128+
+0.5.3  - fixed get <bridge> user/pass
+       - attr adjustValue: reading can be a regexp
+       - code cleanup
+0.5.2  - fixed: PERL WARNING: Use of uninitialized value in substitution (s///)
 0.5.1  - optimized logging
 0.5.0  - eval JSON decoding in http response
        - removed Authorization String from debug log

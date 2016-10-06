@@ -88,5 +88,11 @@
        - added check that fhem.pl is new enough (11000/2016-03-05)
          see: https://forum.fhem.de/index.php/topic,55728.msg497094.html#msg497094
 0.5.1  - optimized logging
+0.5.2  - fixed: PERL WARNING: Use of uninitialized value in substitution (s///) at ./FHEM/34_ESPEasy.pm line 569.
+0.5.3  - adopted deletion of keys in hash->helper if a device will be deleted
+       - fixed get <bridge> user/pass: no value was returned
+       - attr adjustValue: reading can be a regexp
+       - code cleanup
+
 
 ```

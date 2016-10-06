@@ -353,7 +353,7 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
     <li>status<br>
       Request esp device status (eg. gpio)<br>
       required values: <code>&lt;device&gt; &lt;pin&gt;</code><br>
-      eg: <code>&lt;gpio&gt; &lt;13&gt;</code></li><br>
+      eg: <code>gpio 13</code></li><br>
   </ul>
 
   <br><a name="ESPEasyattr"></a>
@@ -362,23 +362,22 @@ Release notes: [ReleaseNotes.md](ReleaseNotes.md)
   <ul>
     <li>adjustValue<br>
       Used to adjust sensor values<br>
-      Must be space separated list of &lt;reading&gt;:&lt;formula&gt;.<br>
-      Formula can be a simple arithmetic expression like '+20', '-0.5' or
-      '($VALUE-32)*5/9'. Function calls are also possible: 
-      substr(($VALUE-32)*5/9,0,5).<br>
+      Must be a space separated list of &lt;reading&gt;:&lt;formula&gt;. 
+      Reading can be a regexp. Formula can be an arithmetic expression like 
+      'round(($VALUE-32)*5/9,2)'.
+      If $VALUE is omitted in formula then it will be added to the beginning of
+      the formula. So you can simple write 'temp:+20' or '.*:*4'<br>
       The following variables can be used if necessary: 
       <ul>
         <li>$VALUE contains the original value</li>
         <li>$READING contains the reading name</li>
         <li>$NAME contains the device name</li>
       </ul>
-      Possible values: space separated list of &lt;reading&gt;:&lt;formula&gt;
-      <br>
       Default: none<br>
       Eg. <code>attr ESPxx adjustValue humidity:+0.1 
-      temperature:($VALUE-32)*5/9</code><br>
-      Eg. <code>attr ESPxx adjustValue humidity:my_OwnFunction($VALUE)
-      brightness:*4</code></li><br>
+      temperature+*:($VALUE-32)*5/9</code><br>
+      Eg. <code>attr ESPxx adjustValue 
+      .*:my_OwnFunction($NAME,$READING,$VALUE)</code></li><br>
       
     <li>disable<br>
       Used to disable device<br>
