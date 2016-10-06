@@ -93,6 +93,7 @@
        - fixed get <bridge> user/pass: no value was returned
        - attr adjustValue: reading can be a regexp
        - code cleanup
+0.5.4  - improved closing tcp sessions
 
 
 ```

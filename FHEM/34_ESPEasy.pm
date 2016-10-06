@@ -1,4 +1,4 @@
-# $Id: 34_ESPEasy.pm 53 2016-10-02 08:30:00Z dev0 $
+# $Id: 34_ESPEasy.pm 54 2016-10-02 08:30:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 / ESPEasy
@@ -119,8 +119,8 @@
 # 2016-10-04  0.5.3  - adopted deletion of keys in hash->helper if a device will be deleted
 #                    - fixed get <bridge> user/pass
 #                    - code cleanup
-#                     
-#
+#                    - fixed: PERL WARNING: Ambiguous use of -time resolved as -&time() at ./FHEM/34_ESPEasy.pm line 1283
+# 2016-10-06  0.5.4  - improved closing tcp connects
 ################################################################################
 
 
@@ -135,7 +135,7 @@ use HttpUtils;
 
 my $ESPEasy_minESPEasyBuild = 128;     # informational
 my $ESPEasy_minJsonVersion  = 1.02;    # checked in received data
-my $ESPEasy_version         = 0.53;
+my $ESPEasy_version         = 0.54;
 my $ESPEasy_urlCmd          = "/control?cmd=";
 
 # ------------------------------------------------------------------------------
@@ -709,8 +709,8 @@ sub ESPEasy_Rename() {
   # copy values from old to new device
 	setKeyValue($type."_".$new."-user",getKeyValue($type."_".$old."-user"));
 	setKeyValue($type."_".$new."-pass",getKeyValue($type."_".$old."-pass"));
-	setKeyValue($type."_".$new."-firstrun",
-	                                     getKeyValue($type."_".$old."-firstrun"));
+	setKeyValue($type."_".$new."-firstrun",getKeyValue($type."_".$old."-firstrun"));
+
   # delete old entries
 	setKeyValue($type."_".$old."-user",undef);
 	setKeyValue($type."_".$old."-pass",undef);
@@ -869,8 +869,11 @@ sub ESPEasy_Undef($$)
   my ($hash, $arg) = @_;
   my ($name,$type,$port) = ($hash->{NAME},$hash->{TYPE},$hash->{PORT});
 
-  #return if it is a child process for incoming http requests
-  return undef if defined $hash->{TEMPORARY} && $hash->{TEMPORARY} == 1;
+  # close server and return if it is a child process for incoming http requests
+  if (defined $hash->{TEMPORARY} && $hash->{TEMPORARY} == 1) {
+    TcpServer_Close($hash);
+    return undef   
+  };
 
   HttpUtils_Close($hash);
   RemoveInternalTimer($hash);
@@ -991,8 +994,8 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
   }
   
   my $hash = $defs{$name};
-  if (defined $hash && $hash->{TYPE} eq "ESPEasy"
-  && $hash->{SUBTYPE} eq "device") {
+
+  if (defined $hash && $hash->{TYPE} eq "ESPEasy" && $hash->{SUBTYPE} eq "device") {
     $hash->{UNIQIDS} = $ui;
     my @logInternals;
     foreach (@v) {
@@ -1002,7 +1005,7 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
       my $replace = '"'.AttrVal($name,"readingPrefixGPIO","GPIO").'"';
       $reading =~ s/^GPIO/$replace/ee;
 
-      # --- setReading ---
+      # --- setReading ----------------------------------------------
       if ($cmd eq "r") { 
         # reading suffix replacement only for setreading
         $replace = '"'.AttrVal($name,"readingSuffixGPIOState","").'"';
@@ -1023,13 +1026,13 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
         $hash->{helper}{received}{$reading} = $ip;
       }
 
-      # --- setInternal ---
+      # --- setInternal ---------------------------------------------
       elsif ($cmd eq "i") {
         $hash->{helper}{internals}{$ip}{uc($reading)} = $value;
         push(@logInternals,"$reading:$value");
       }
 
-      # --- DeleteReading ---
+      # --- DeleteReading -------------------------------------------
       elsif ($cmd eq "dr") {
         CommandDeleteReading(undef, "$name $reading");
         Log3 $name, 4, "$type $name: reading $reading deleted";
@@ -1112,9 +1115,9 @@ sub ESPEasy_httpRequest($$$$$@)
 
   $url = "http://".$host.":".$port.$ESPEasy_urlCmd.$cmd.$plist;
   
-  Log3 $name, 3, "$type $name: send $cmd$plist to $ident ($host)"
-    if ($cmd !~ /^(status)/);
+  Log3 $name, 3, "$type $name: send $cmd$plist to $ident ($host)" if ($cmd !~ /^(status)/);
   Log3 $name, 5, "$type $name: URL: $url";
+
 
   my $timeout = AttrVal($name,"httpReqTimeout",10);
   my $httpParams = {
@@ -1173,7 +1176,7 @@ sub ESPEasy_httpRequestParse($$$)
       # 10 = SENSOR_TYPE_SWITCH
       my $vType = (defined $res->{plugin} && $res->{plugin} eq "1") ? "10" : "0";
 
-      # push msgs in @values
+      # push values/cmds in @values
       push @values, "r||GPIO".$res->{pin}."_mode||".$res->{mode}."||".$vType;
       push @values, "r||GPIO".$res->{pin}."_state||".$res->{state}."||".$vType;
       push @values, "r||_lastAction"."||".$res->{log}."||".$vType if $res->{log} ne "";
@@ -1609,14 +1612,15 @@ sub ESPEasy_isPmInstalled($$)
 sub ESPEasy_isIPv4($) {return if(!defined $_[0]); return 1 if($_[0] 
   =~ /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/)}
 
-
 # ------------------------------------------------------------------------------
 sub ESPEasy_isFqdn($) {return if(!defined $_[0]); return 1 if($_[0] 
   =~ /^(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}$)$/)}
 
-
 # ------------------------------------------------------------------------------
 sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
+
+# ------------------------------------------------------------------------------
+sub ESPEasy_paramCount($) { return () = $_[0] =~ /\s/g } # count \s in a string
 
 1;
 
@@ -2050,8 +2054,8 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Set to 0 to disable this feature. A positive number determines the number
       of characters used for reading names. Only readings with an age less than
       <a href="#ESPEasyInterval">interval</a> will be considered.<br>
-      Reading state will be updated only if a value has been changed to reduce<br>
-      events.
+      Reading state will be updated only if a value has been changed to reduce
+      events.<br>
       Possible values: integer &gt;=0<br>
       Default: 3 (enabled with 3 characters abbreviation)</li><br>
   </ul>
