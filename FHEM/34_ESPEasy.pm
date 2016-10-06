@@ -1280,7 +1280,7 @@ sub ESPEasy_intAt2helper($) {
       $hash->{helper}{intAt}{$i}{TRIGGERTIME} = strftime('%d.%m.%Y %H:%M:%S',
                                             localtime($intAt{$a}{TRIGGERTIME}));
       $hash->{helper}{intAt}{$i}{INTERVAL} = round($intAt{$a}{TRIGGERTIME}
-                                            -time,0);
+                                            -time(),0);
       $hash->{helper}{intAt}{$i}{FN} = $intAt{$a}{FN};
       $i++
     }
