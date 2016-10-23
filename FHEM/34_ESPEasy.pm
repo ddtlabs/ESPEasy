@@ -1,4 +1,4 @@
-# $Id: 34_ESPEasy.pm 60 2016-10-02 08:30:00Z dev0 $
+# $Id: 34_ESPEasy.pm 61 2016-10-02 08:30:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 / ESPEasy
@@ -144,7 +144,7 @@ use HttpUtils;
 
 my $ESPEasy_minESPEasyBuild = 128;     # informational
 my $ESPEasy_minJsonVersion  = 1.02;    # checked in received data
-my $ESPEasy_version         = 0.60;    # Version of this module
+my $ESPEasy_version         = 0.61;    # Version of this module
 my $dInterval = 300;                   # default interval
 
 # ------------------------------------------------------------------------------
@@ -1710,7 +1710,7 @@ sub ESPEasy_isPmInstalled($$)
 sub ESPEasy_isPeerAllowed($$)
 {
   my ($peer,$allowed) = @_;
-  return 0 if !defined $allowed;
+  return 1 if !defined $allowed;
   return 1 if $allowed =~ /^0.0.0.0\/0(.0.0.0)?$/; # not necessary but faster
 
   my $binPeer = ESPEasy_ip2bin($peer);
