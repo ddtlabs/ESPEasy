@@ -94,6 +94,15 @@
        - attr adjustValue: reading can be a regexp
        - code cleanup
 0.5.4  - improved closing tcp sessions
+0.6.0  - increase verbose level for startup/shutdown log messages
+       - moved attribute handling to NotifyFn
+       - new attribute parseCmdResponse
+       - disabled parsing httpRequests by default, enable with attr parseCmdResponse
+       - more relaxed checking of existenz of 'esp name' and 'device name'.
+       - dispatch error msgs to device, show last WARNING in internals
+       - new attribute allowedIPs
+       - added default attributes
+
 
 
 ```
