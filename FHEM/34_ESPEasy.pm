@@ -1,4 +1,4 @@
-# $Id: 34_ESPEasy.pm 61 2016-10-02 08:30:00Z dev0 $
+# $Id: 34_ESPEasy.pm 64 2016-10-02 08:30:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 / ESPEasy
@@ -129,6 +129,11 @@
 #                    - more relaxed checking of existenz of 'esp name' and 'device name'.
 #                    - dispatch error msgs to device, show WARNING in internals
 #                    - added default attributes
+# 2016-10-23  0.6.1  - changed default behavior allowedIPs feature to 'allow'
+# 2016-10-25  0.6.2  - added attribut deniedIPs
+# 2016-10-26  0.6.3  - close open tcp session immediately if ESP is configured 
+#                      to go to deep sleep (EPSEasy bug?)
+# 2016-10-29  0.6.4  - fixed faulty presence detection after FHEM restart
 #
 ################################################################################
 
@@ -144,8 +149,9 @@ use HttpUtils;
 
 my $ESPEasy_minESPEasyBuild = 128;     # informational
 my $ESPEasy_minJsonVersion  = 1.02;    # checked in received data
-my $ESPEasy_version         = 0.61;    # Version of this module
-my $dInterval = 300;                   # default interval
+my $ESPEasy_version         = 0.64;    # Version of this module
+my $dInterval               = 300;     # default interval
+my $dhttpReqTimeout         = 10;      # default timeout http req + selfdestroy
 
 # ------------------------------------------------------------------------------
 # "setCmds" => "min. number of parameters"
@@ -273,6 +279,7 @@ sub ESPEasy_Initialize($)
                        ."authentication:1,0 "
                        ."autocreate:1,0 "
                        ."autosave:1,0 "
+                       ."deniedIPs "
                        ."disable:1,0 "
                        ."do_not_notify:0,1 "
                        ."httpReqTimeout "
@@ -285,7 +292,7 @@ sub ESPEasy_Initialize($)
                        ."readingPrefixGPIO "
                        ."readingSuffixGPIOState "
                        ."readingSwitchText:1,0 "
-                       ."setState:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20 "
+                       ."setState:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,100 "
                        ."uniqIDs:1,0 "
                        .$readingFnAttributes;
 }
@@ -343,8 +350,8 @@ sub ESPEasy_Define($$)  # only called when defined, not on reload.
       CommandAttr(undef,"$name room $type");
       CommandAttr(undef,"$name group $type Bridge");
       CommandAttr(undef,"$name authentication 0");
-      CommandAttr(undef,"$name uniqIDs 1");
-      CommandAttr(undef,"$name allowedIPs 0.0.0.0/0");
+#      CommandAttr(undef,"$name uniqIDs 1");
+#      CommandAttr(undef,"$name allowedIPs 0.0.0.0/0");
       setKeyValue($type."_".$name."-firstrun","done");
     }
     # only informational 
@@ -543,7 +550,7 @@ sub ESPEasy_Read($) {
 
   # Accept and create a child
   if( $hash->{SERVERSOCKET} ) {
-    my $aRet = TcpServer_Accept( $hash, "ESPEasy" );
+    my $aRet = TcpServer_Accept($hash,"ESPEasy");
     return;
   }
 
@@ -560,17 +567,18 @@ sub ESPEasy_Read($) {
     return;
   }
 
+  $bhash->{SESSIONS} = scalar devspec2array("TYPE=$btype:FILTER=TEMPORARY=1")-1;
+
   # Check attr disabled
   return if (IsDisabled $bname);
 
   # Check allowed IPs
-  if (ESPEasy_isPeerAllowed($peer,AttrVal($bname,"allowedIPs",undef))) {
-    Log3 $bname, 4, "$btype $name: Peer address accepted";
-  }
-  else {
-    Log3 $bname, 4, "$btype $name: Peer address rejected";
+  if ( !( ESPEasy_isPeerAllowed($peer,AttrVal($bname,"allowedIPs",1)) &&
+         !ESPEasy_isPeerAllowed($peer,AttrVal($bname,"deniedIPs",0)) ) ) {
+    Log3 $bname, 2, "$btype $name: Peer address rejected";
     return;
   }
+  Log3 $bname, 4, "$btype $name: Peer address accepted";
   
   my @data = split( '\R\R', $buf );
   my $header = ESPEasy_header2Hash($data[0]);
@@ -601,15 +609,15 @@ sub ESPEasy_Read($) {
   }
 
   # No error occurred, send http respose OK to ESP
-  ESPEasy_sendHttpClose($hash,"200 OK","");
+  ESPEasy_sendHttpClose($hash,"200 OK",""); #if !grep(/"sleep":1/, $data[1]);
 
   # JSON received...
+  my $json;
   if (defined $data[1] && $data[1] =~ m/"module":"ESPEasy"/) {
 
     # remove illegal chars but keep JSON relevant chars.
     $data[1] =~ s/[^A-Za-z\d_\.\-\/\{}:,"]/_/g;
 
-    my $json;
     eval {$json = decode_json($data[1]);1;};
     if ($@) {
       Log3 $bname, 2, "$btype $name: WARNING: deformed JSON data, check your ESP config ($peer)";
@@ -617,7 +625,7 @@ sub ESPEasy_Read($) {
      return;
     }
 
-    # check that ESPEasy software is new enouph
+    # check that ESPEasy software is new enough
     return if ESPEasy_checkVersion($bhash,$peer,$json->{data}{ESP}{build},$json->{version});
 
     # should never happen, but who knows what some JSON module versions do...
@@ -688,6 +696,11 @@ sub ESPEasy_Read($) {
                    .$ESPEasy_minESPEasyBuild." or later required.";
   }
   
+  # session will not be close immediately if ESP goes to sleep after http send
+  # needs further investigation?
+  if ($hash->{TEMPORARY} && $json->{data}{ESP}{sleep}) {
+    CommandDelete(undef, $name);
+  }
   return;
 }
 
@@ -839,8 +852,13 @@ sub ESPEasy_Attr(@)
   my ($cmd,$name,$aName,$aVal) = @_;
   my $hash = $defs{$name};
   my $type = $hash->{TYPE};
-  my $ret = undef;
+  my $ret;
 
+  if ($cmd eq "set" && !defined $aVal) {
+    Log3 $name, 2, "$type $name: attr $name $aName '': value must not be empty";
+    return "$name: attr $aName: value must not be empty";
+  }
+  
   # device attributes
   if (defined $hash->{SUBTYPE} && $hash->{SUBTYPE} eq "bridge" 
   && ($aName =~ /(^Interval|pollGPIOs|IODev|setState|readingSwitchText)$/
@@ -851,41 +869,41 @@ sub ESPEasy_Attr(@)
   }
   # bridge attributes
   elsif (defined $hash->{SUBTYPE} && $hash->{SUBTYPE} eq "device"
-  && $aName =~/^(autocreate|autosave|authentication|httpReqTimeout|allowedIPs)$/){
+  && $aName =~/^(autocreate|autosave|authentication|httpReqTimeout|allowedIPs|deniedIPs)$/){
     Log3 $name, 2, "$type $name: Attribut '$aName' can be used with the bridge device, only";
     return "$type: attribut '$aName' can be used with the bridge device, only";
   }
 
   elsif ($aName =~ /^autosave|autocreate|authentication|disable|uniqIDs$/
       || $aName =~ /^presenceCheck|readingSwitchText$/) {
-    $ret="0,1" if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/)}
+    $ret = "0,1" if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/)}
 
+  elsif ($aName =~ /^(allowedIPs|deniedIPs)$/) {
+    $ret = "ip[/netmask][,ip[/netmask]][,...]" if $cmd eq "set" && !ESPEasy_isIPv64Range($aVal)}
+      
   elsif ($aName eq "pollGPIOs") {
-    $ret ="GPIO_No[,GPIO_No][...]"
+    $ret = "GPIO_No[,GPIO_No][...]"
       if $cmd eq "set" && $aVal !~ /^[a-zA-Z]{0,2}[0-9]+(,[a-zA-Z]{0,2}[0-9]+)*$/}
 
   elsif ($aName eq "parseCmdResponse") {
     my $cmds = lc join("|",keys %ESPEasy_setCmdsUsage);
-    $ret ="cmd[,cmd][...]" if $cmd eq "set" && lc($aVal) !~ /^($cmds){1}(,($cmds))*$/}
+    $ret = "cmd[,cmd][...]" if $cmd eq "set" && lc($aVal) !~ /^($cmds){1}(,($cmds))*$/}
 
   elsif ($aName eq "setState") {
-    $ret="integer" if ($cmd eq "set" && not $aVal =~ m/^(\d+)$/)}
+    $ret = "integer" if ($cmd eq "set" && not $aVal =~ m/^(\d+)$/)}
 
   elsif ($aName eq "readingPrefixGPIO") {
-    $ret="[a-zA-Z0-9._-/]+" if ($cmd eq "set" && $aVal !~ m/^[A-Za-z\d_\.\-\/]+$/)}
+    $ret = "[a-zA-Z0-9._-/]+" if ($cmd eq "set" && $aVal !~ m/^[A-Za-z\d_\.\-\/]+$/)}
 
   elsif ($aName eq "readingSuffixGPIOState") {
-    $ret="[a-zA-Z0-9._-/]+" if ($cmd eq "set" && $aVal !~ m/^[A-Za-z\d_\.\-\/]+$/)}
+    $ret = "[a-zA-Z0-9._-/]+" if ($cmd eq "set" && $aVal !~ m/^[A-Za-z\d_\.\-\/]+$/)}
 
   elsif ($aName eq "httpReqTimeout") {
-    $ret ="3..60" if $cmd eq "set" && ($aVal < 3 || $aVal > 60)}
-      
-  elsif ($aName eq "allowedIPs") {
-    $ret ="ip[/netmask][,ip[/netmask]][,...]" if $cmd eq "set" && !ESPEasy_isIPv64Range($aVal)}
+    $ret = "3..60" if $cmd eq "set" && ($aVal < 3 || $aVal > 60)}
       
   elsif ($aName eq "Interval") {
     ($cmd eq "set" && ($aVal !~ m/^(\d)+$/ || $aVal <10 && $aVal !=0))
-    ? $ret="0 or >=10" : $hash->{INTERVAL} = $aVal}
+    ? $ret = "0 or >=10" : $hash->{INTERVAL} = $aVal}
 
   if (!$init_done) {
     if ($aName =~ /^disable$/ && $aVal == 1) {
@@ -895,7 +913,7 @@ sub ESPEasy_Attr(@)
 
   if (defined $ret) {
     Log3 $name, 2, "$type $name: attr $name $aName '$aVal' != '$ret'";
-    return "$aName must be: $ret";
+    return "$name: $aName must be: $ret";
   }
 
   return undef;
@@ -927,7 +945,6 @@ sub ESPEasy_Undef($$)
     Log3 $name, 2, "$type $name: Socket on port tcp/$port closed";
   }
   else {
-#    IOWrite($hash, $hash->{HOST}, undef, undef, "cleanup", undef );
     IOWrite($hash, $hash->{HOST}, undef, undef, undef, "cleanup", undef );
   }
   
@@ -995,7 +1012,6 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
   my $IOname = $IOhash->{NAME};
   my $type   = $IOhash->{TYPE};
 
-#  Log 5, "$type $IOname: $msg";
   # 1:ident 2:ip 3:autocreate 4:autosave 5:uniqIDs 6:value(s)
   my ($ident,$ip,$ac,$as,$ui,$v) = split("::",$msg);
   return undef if !$ident || $ident eq "";
@@ -1180,7 +1196,7 @@ sub ESPEasy_httpRequest($$$$$$@)
   Log3 $name, 4, "$type $name: Send $cmd$plist to $host for ident $ident" if ($cmd !~ /^(status)/);
 
 
-  my $timeout = AttrVal($name,"httpReqTimeout",10);
+  my $timeout = AttrVal($name,"httpReqTimeout",$dhttpReqTimeout);
   my $httpParams = {
     url         => $url,
     timeout     => $timeout,
@@ -1498,6 +1514,13 @@ sub ESPEasy_paramPos($$)
 
 
 # ------------------------------------------------------------------------------
+sub ESPEasy_paramCount($) 
+{ 
+  return () = $_[0] =~ /\s/g  # count \s in a string
+}
+
+
+# ------------------------------------------------------------------------------
 sub ESPEasy_clearReadings($)
 {
   my ($hash) = @_;
@@ -1562,7 +1585,12 @@ sub ESPEasy_checkPresence($;$)
 
   return undef if AttrVal($name,'presenceCheck',1) == 0;
   return undef if $interval == 0;
-  
+  ###
+  # update presence only if 1st check was $interval seconds ago.
+  $hash->{helper}{firstPresenceCheck} = time() if (!defined $hash->{helper}{firstPresenceCheck});
+  return undef if ((time() - $hash->{helper}{firstPresenceCheck}) <= $interval);
+  ###
+
   # check each received ip
   foreach my $ip (keys %{$hash->{helper}{presence}}) {
     $hash->{helper}{presence}{$ip} = "absent";
@@ -1577,24 +1605,41 @@ sub ESPEasy_checkPresence($;$)
     }
   }
 
-  my $presence; my @ad;
-  my $i = 0; my $p = 0;
-  foreach my $ip (keys %{$hash->{helper}{presence}}) {
-    if ($hash->{helper}{presence}{$ip} eq "absent") {
-      push(@ad,$ip); 
-      $p++;
+  ###  
+  # no values received within $interval for no ip
+  if (!scalar keys %{$hash->{helper}{presence}}) {
+    #event-on-change-reading only
+    if (ReadingsVal($name,"presence","unknown") ne "absent") {
+      readingsSingleUpdate($hash,"presence","absent",1);
+      Log3 $name, 4, "$type $name: presence: absent";
     }
-    $i++
   }
-  if    ($p == 0)  {$presence = "present"}
-  elsif ($p == $i) {$presence = "absent"}
-  else             {$presence = "partial absent (".join(",",@ad).")"}
 
-  #event-on-change-reading only
-  if ($presence ne ReadingsVal($name,"presence","unknown")) {
-    readingsSingleUpdate($hash,"presence",$presence,1);
-    Log3 $name, 4, "$type $name: presence: $presence";
-  }
+  # at least 1 value was received since last restart
+  else {  
+  ###
+    my $presence; my @ad;
+    my $i = 0; my $p = 0;
+    foreach my $ip (keys %{$hash->{helper}{presence}}) {
+      if ($hash->{helper}{presence}{$ip} eq "absent") {
+        push(@ad,$ip); 
+        $p++;
+      }
+      $i++
+    }
+    if    ($p == 0)  {$presence = "present"}
+    elsif ($p == $i) {$presence = "absent"}
+    else             {$presence = "partial absent (".join(",",@ad).")"}
+
+    #event-on-change-reading only
+    if ($presence ne ReadingsVal($name,"presence","unknown")) {
+      readingsSingleUpdate($hash,"presence",$presence,1);
+      Log3 $name, 4, "$type $name: presence: $presence";
+    }
+
+  ###
+  } # else (!scalar keys %{$hash->{helper}{presence}})
+  ###
 
   return undef;
 }
@@ -1710,8 +1755,8 @@ sub ESPEasy_isPmInstalled($$)
 sub ESPEasy_isPeerAllowed($$)
 {
   my ($peer,$allowed) = @_;
-  return 1 if !defined $allowed;
-  return 1 if $allowed =~ /^0.0.0.0\/0(.0.0.0)?$/; # not necessary but faster
+  return $allowed if $allowed =~ m/^[01]$/;
+  #return 1 if $allowed =~ /^0.0.0.0\/0(.0.0.0)?$/; # not necessary but faster
 
   my $binPeer = ESPEasy_ip2bin($peer);
   my @a = split(/,| /,$allowed);
@@ -1810,14 +1855,15 @@ sub ESPEasy_dottedNmToCIDR($)
 
 
 # ------------------------------------------------------------------------------
-# check if given ip or ip range is a guilty 
+# check if given ip or ip range is guilty 
 # argument can be: 
-# - ipv4, ipv4/CIDR, ipv4/dotted, ipv6/CIDR
+# - ipv4, ipv4/CIDR, ipv4/dotted, ipv6, ipv6/CIDR
 # - space or comma separated list of above.
 # ------------------------------------------------------------------------------
 sub ESPEasy_isIPv64Range($)
 {
   my ($addr) = @_;
+  return 0 if !defined $addr;
   my @ranges = split(/,| /,$addr);
   foreach (@ranges) {
     my ($ip,$nm) = split("/",$_);
@@ -1861,9 +1907,6 @@ sub ESPEasy_isFqdn($) {return if(!defined $_[0]); return 1 if($_[0]
 
 # ------------------------------------------------------------------------------
 sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
-
-# ------------------------------------------------------------------------------
-sub ESPEasy_paramCount($) { return () = $_[0] =~ /\s/g } # count \s in a string
 
 1;
 
@@ -1968,17 +2011,26 @@ sub ESPEasy_paramCount($) { return () = $_[0] =~ /\s/g } # count \s in a string
   <b>Attributes </b>(bridge)<br><br>
   
   <ul>
-    <li><a name="">allowedIPs</a><br>
+    <li><a name="ESPEasyallowedIPs">allowedIPs</a><br>
       Used to limit IPs or IP ranges of ESPs which are allowed to commit data.
       <br>
       Specify comma separated list of IPs or IP ranges. Netmask can be written
-      as bitmask or dotted decimal. Domain names for reverse lookups are not
+      as bitmask or dotted decimal. Domain names for dns lookups are not
       supported.<br>
       Possible values: IPv64 address, IPv64/netmask<br>
       Default: 0.0.0.0/0 (all IPs are allowed)<br>
       Eg. 10.68.30.147<br>
-      Eg. 10.68.30.147,10.68.31.0/24<br>
-      Eg. 10.68.30.0/26,10.68.32.0/255.255.248.0</li><br>
+      Eg. 10.68.30.0/24,10.68.31.0/255.255.248.0<br>
+      Eg. fe80::/10,2001:1a59:50a9::/48,2002:1a59:50a9::,2003:1a59:50a9:acdc::36
+      </li><br>
+
+    <li><a name="">deniedIPs</a><br>
+      Used to define IPs or IP ranges of ESPs which are denied to commit data.
+      <br>
+      Syntax see <a href="#ESPEasyallowedIPs">allowedIPs</a>.<br>
+      This attribute will overwrite any IP or range defined by
+      <a href="#ESPEasyallowedIPs">allowedIPs</a>.<br>
+      Default: none (no IPs are denied)</li><br>
 
     <li><a name="">authentication</a><br>
       Used to enable basic authentication for incoming requests<br>

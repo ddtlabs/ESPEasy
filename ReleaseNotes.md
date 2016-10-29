@@ -102,7 +102,10 @@
        - dispatch error msgs to device, show last WARNING in internals
        - new attribute allowedIPs
        - added default attributes
-
-
+0.6.1  - changed default behavior allowedIPs feature to 'allow'
+0.6.2  - added attribut deniedIPs
+0.6.3  - close open tcp session immediately if ESP is configured 
+         to go to deep sleep (EPSEasy bug?)
+0.6.4  - fixed faulty presence detection after FHEM restart
 
 ```

@@ -1,4 +1,10 @@
 Requirements: ESPEasy R128+ (self compiled) or R140_RC3 (image)
+
+0.6.4  - fixed faulty presence detection after FHEM restart
+0.6.3  - close open tcp session immediately if ESP is configured 
+         to go to deep sleep (EPSEasy bug?)
+0.6.2  - added attribut deniedIPs
+0.6.1  - changed default behavior allowedIPs feature to 'allow'
 0.6.0  - increase verbose level for startup/shutdown log messages
        - moved attribute handling to NotifyFn
        - disabled parsing httpRequests by default, enable with attr parseCmdResponse
