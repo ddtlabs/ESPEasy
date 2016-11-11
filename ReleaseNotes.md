@@ -107,5 +107,10 @@
 0.6.3  - close open tcp session immediately if ESP is configured 
          to go to deep sleep (EPSEasy bug?)
 0.6.4  - fixed faulty presence detection after FHEM restart
+0.6.5  - added space between reading und value in state (Forum #55728.msg515626)
+       - attribute uniqIDs is deprecated and will be removed soon
+       - added function declarations (Forum #55728.msg511921)
+       - new attribute combineDevices (Used to gather all ESP devices of a single ESP into 1 FHEM device even if different ESP devices names are used)
+0.6.6  - minor fixes
 
 ```

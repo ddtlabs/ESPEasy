@@ -1,15 +1,8 @@
 Requirements: ESPEasy R128+ (self compiled) or R140_RC3 (image)
 
-0.6.4  - fixed faulty presence detection after FHEM restart
-0.6.3  - close open tcp session immediately if ESP is configured 
-         to go to deep sleep (EPSEasy bug?)
-0.6.2  - added attribut deniedIPs
-0.6.1  - changed default behavior allowedIPs feature to 'allow'
-0.6.0  - increase verbose level for startup/shutdown log messages
-       - moved attribute handling to NotifyFn
-       - disabled parsing httpRequests by default, enable with attr parseCmdResponse
-       - new attribute parseCmdResponse
-       - more relaxed checking of existenz of 'esp name' and 'device name'.
-       - dispatch error msgs to device, show WARNING in internals
-       - new attribute allowedIPs
-       - added default attributes
+0.6.6  - added space between reading und value in state (Forum #55728.msg515626)
+       - attribute uniqIDs is deprecated and will be removed from next release
+       - added function declarations (Forum #55728.msg511921)
+       - new attribute combineDevices (Used to gather all ESP devices of a single ESP into 1 FHEM device even if different ESP devices names are used)
+       - Shutdown restart required after update
+

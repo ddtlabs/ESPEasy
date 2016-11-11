@@ -1,4 +1,4 @@
-# $Id: 34_ESPEasy.pm 64 2016-10-02 08:30:00Z dev0 $
+# $Id: 34_ESPEasy.pm 66 2016-10-02 08:30:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 / ESPEasy
@@ -134,6 +134,11 @@
 # 2016-10-26  0.6.3  - close open tcp session immediately if ESP is configured 
 #                      to go to deep sleep (EPSEasy bug?)
 # 2016-10-29  0.6.4  - fixed faulty presence detection after FHEM restart
+# 2016-11-05  0.6.5  - added space between reading und value in state (Forum #55728.msg515626)
+#                    - attribute uniqIDs is deprecated and will be removed soon
+#                    - added function declarations (Forum #55728.msg511921)
+#                    - new attribute combineDevices (Used to gather all ESP devices of a single ESP into 1 FHEM device even if different ESP devices names are used)
+# 2016-11-10  0.6.6  - minor fixes
 #
 ################################################################################
 
@@ -147,9 +152,12 @@ use MIME::Base64;
 use TcpServerUtils;
 use HttpUtils;
 
+# ------------------------------------------------------------------------------
+# global and default values
+# ------------------------------------------------------------------------------
 my $ESPEasy_minESPEasyBuild = 128;     # informational
 my $ESPEasy_minJsonVersion  = 1.02;    # checked in received data
-my $ESPEasy_version         = 0.64;    # Version of this module
+my $ESPEasy_version         = 0.66;    # Version of this module
 my $dInterval               = 300;     # default interval
 my $dhttpReqTimeout         = 10;      # default timeout http req + selfdestroy
 
@@ -249,6 +257,63 @@ my %ESPEasy_pinMap = (
 
 
 # ------------------------------------------------------------------------------
+#grep ^sub 34_ESPEasy.pm | awk '{print $1" "$2";"}'
+sub ESPEasy_Initialize($);
+sub ESPEasy_Define($$);
+sub ESPEasy_Get($@);
+sub ESPEasy_Set($$@);
+sub ESPEasy_Read($);
+sub ESPEasy_Write($$$$$@);
+sub ESPEasy_Notify($$);
+sub ESPEasy_Rename();
+sub ESPEasy_Attr(@);
+sub ESPEasy_Undef($$);
+sub ESPEasy_Shutdown($);
+sub ESPEasy_Delete($$);
+sub ESPEasy_dispatch($$$@);
+sub ESPEasy_dispatchParse($$$);
+sub ESPEasy_autocreate($$$$);
+sub ESPEasy_httpRequest($$$$$$@);
+sub ESPEasy_httpRequestParse($$$);
+sub ESPEasy_statusRequest($);
+sub ESPEasy_pollGPIOs($);
+sub ESPEasy_resetTimer($;$);
+sub ESPEasy_intAt2helper($);
+sub ESPEasy_tcpServerOpen($);
+sub ESPEasy_header2Hash($);
+sub ESPEasy_isAuthenticated($$);
+sub ESPEasy_isParseCmd($$);
+sub ESPEasy_sendHttpClose($$$);
+sub ESPEasy_paramPos($$);
+sub ESPEasy_paramCount($);
+sub ESPEasy_clearReadings($);
+sub ESPEasy_checkVersion($$$$);
+sub ESPEasy_checkPresence($;$);
+sub ESPEasy_setESPConfig($);
+sub ESPEasy_setState($);
+sub ESPEasy_adjustValue($$$);
+sub ESPEasy_isPmInstalled($$);
+sub ESPEasy_isAttrCombineDevices($);
+sub ESPEasy_isCombineDevices($$$);
+sub ESPEasy_isValidPeer($);
+sub ESPEasy_isIPv64Range($);
+sub ESPEasy_isPeerAllowed($$);
+sub ESPEasy_ip2bin($);
+sub ESPEasy_expandIPv6($);
+sub ESPEasy_addrToCIDR($);
+sub ESPEasy_dottedNmToCIDR($);
+sub ESPEasy_isIPv4($);
+sub ESPEasy_isIPv6($);
+sub ESPEasy_isIPv64($);
+sub ESPEasy_isNmDotted($);
+sub ESPEasy_isNmCIDRv4($);
+sub ESPEasy_isNmCIDRv6($);
+sub ESPEasy_isFqdn($);
+sub ESPEasy_isHostname($);
+sub ESPEasy_whoami();
+
+
+# ------------------------------------------------------------------------------
 sub ESPEasy_Initialize($)
 {
   my ($hash) = @_;
@@ -293,6 +358,7 @@ sub ESPEasy_Initialize($)
                        ."readingSuffixGPIOState "
                        ."readingSwitchText:1,0 "
                        ."setState:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,100 "
+                       ."combineDevices "
                        ."uniqIDs:1,0 "
                        .$readingFnAttributes;
 }
@@ -350,8 +416,7 @@ sub ESPEasy_Define($$)  # only called when defined, not on reload.
       CommandAttr(undef,"$name room $type");
       CommandAttr(undef,"$name group $type Bridge");
       CommandAttr(undef,"$name authentication 0");
-#      CommandAttr(undef,"$name uniqIDs 1");
-#      CommandAttr(undef,"$name allowedIPs 0.0.0.0/0");
+      CommandAttr(undef,"$name combineDevices 0");
       setKeyValue($type."_".$name."-firstrun","done");
     }
     # only informational 
@@ -498,10 +563,22 @@ sub ESPEasy_Set($$@)
     # onOff mapping (on/off -> 1/0)
     $pp = ESPEasy_paramPos($cmd,'<0|1|off|on>');
     if ($pp && not($params[$pp-1] =~ /^0|1$/)) {
-      my $state = ($params[$pp-1] eq "off") ? 0 : 1;
+      my $state;
+      if ($params[$pp-1] =~ /^off$/i) {
+        $state = 0;
+      }
+      elsif ($params[$pp-1] =~ /^on$/i) {
+        $state = 1;
+      }
+      else {
+        Log3 $name, 2, "$type $name: $cmd ".join(" ",@params)." => unknown argument: '$params[$pp-1]'";
+        return undef;      
+      }
       Log3 $name, 5, "$type $name: onOff mapping ". $params[$pp-1]." => $state";
       $params[$pp-1] = $state;
     }
+
+
 
     if ($cmd eq "help") {
       my $usage = $ESPEasy_setCmdsUsage{$params[0]};
@@ -644,6 +721,7 @@ sub ESPEasy_Read($) {
       return;
     }
 
+    # deprecated
     # check that 'device name' is set at least if uniqIDs is disabled
     if (!AttrVal($bname,"uniqIDs",1) && $espDevName eq "") {
       Log3 $bname, 2, "$btype $name: WARNIING 'device name' missing ($peer). "
@@ -653,9 +731,16 @@ sub ESPEasy_Read($) {
       return;
     }
 
-    my $concat = ($espName ne "" && $espDevName ne "") ? "_" : "";
-    # respect uniqIDs attribut for $ident
-    my $ident = (AttrVal($bname,"uniqIDs",1)) ? $espName.$concat.$espDevName : $espDevName;
+    my $ident;
+
+    # deprecated
+    if(!AttrVal($bname,"uniqIDs",1)) {
+      $ident = $espDevName
+    }
+
+    $ident = ESPEasy_isCombineDevices($peer,$espName,AttrVal($bname,"combineDevices",0))
+      ? $espName ne "" ? $espName : $peer
+      : $espName.($espName ne "" && $espDevName ne "" ? "_" : "").$espDevName;
 
     # push internals in @values (and in bridge helper for support reason, only)
     my @values;
@@ -747,7 +832,7 @@ sub ESPEasy_Notify($$)
         }
         else {
           Log3 $name, 3,"$type $name: Device disabled";
-          ESPEasy_clearReadings($hash) if $hash->{SUBTYPE} eq "device";;
+          ESPEasy_clearReadings($hash) if $hash->{SUBTYPE} eq "device";
           ESPEasy_resetTimer($hash,"stop");
           readingsSingleUpdate($hash, "state", "disabled",1)
         }
@@ -760,7 +845,8 @@ sub ESPEasy_Notify($$)
         elsif (defined $4 && $4 eq "0") {
           $hash->{INTERVAL} = "disabled";
           ESPEasy_resetTimer($hash,"stop");
-          CommandDeleteReading(undef, "$name presence") if defined $hash->{READINGS}{presence};
+          CommandDeleteReading(undef, "$name presence") 
+            if defined $hash->{READINGS}{presence};
         }
         else { # Interval > 0
           $hash->{INTERVAL} = $4;
@@ -869,17 +955,44 @@ sub ESPEasy_Attr(@)
   }
   # bridge attributes
   elsif (defined $hash->{SUBTYPE} && $hash->{SUBTYPE} eq "device"
-  && $aName =~/^(autocreate|autosave|authentication|httpReqTimeout|allowedIPs|deniedIPs)$/){
-    Log3 $name, 2, "$type $name: Attribut '$aName' can be used with the bridge device, only";
+  && ($aName =~ /^(autocreate|autosave|authentication|httpReqTimeout)$/
+  ||  $aName =~ /^(allowedIPs|deniedIPs|combineDevices)$/ )) {
+    Log3 $name, 2, "$type $name: Attribut '$aName' can be used with "
+                  ."bridge device, only";
     return "$type: attribut '$aName' can be used with the bridge device, only";
   }
 
-  elsif ($aName =~ /^autosave|autocreate|authentication|disable|uniqIDs$/
+  elsif ($aName =~ /^autosave|autocreate|authentication|disable$/
       || $aName =~ /^presenceCheck|readingSwitchText$/) {
     $ret = "0,1" if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/)}
 
+  elsif ($aName =~ /^uniqIDs$/) {
+    if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/) {
+      $ret = "0,1" 
+    }
+    elsif ($cmd eq "set" && $aVal eq "0") {
+      Log3 $name, 1, $type.':';
+      Log3 $name, 1, $type.': __        ___    ____  _   _ ___ _   _  ____ ';
+      Log3 $name, 1, $type.': \ \      / / \  |  _ \| \ | |_ _| \ | |/ ___|';
+      Log3 $name, 1, $type.':  \ \ /\ / / _ \ | |_) |  \| || ||  \| | |  _ ';
+      Log3 $name, 1, $type.':   \ V  V / ___ \|  _ <| |\  || || |\  | |_| |';
+      Log3 $name, 1, $type.':    \_/\_/_/   \_\_| \_\_| \_|___|_| \_|\____|';
+      Log3 $name, 1, $type.':';
+      Log3 $name, 1, "$type $name: Attribut $aName is deprecated and will be "
+                    ."removed from next release. Please update your config soon.";
+      Log3 $name, 1, "$type $name: Use attribute combineDevices instead.";
+                 
+      Log3 $name, 1, $type.':';
+      $hash->{WARNING} = "Attribute $aName is deprecated and will be removed soon!";
+    } }    
+
+  elsif ($aName eq "combineDevices") {
+    $ret = "0 | 1 | ESPname | ip[/netmask][,ip[/netmask]][,...]" 
+      if $cmd eq "set" && !(ESPEasy_isAttrCombineDevices($aVal) || $aVal =~ m/^[01]$/ )}
+      
   elsif ($aName =~ /^(allowedIPs|deniedIPs)$/) {
-    $ret = "ip[/netmask][,ip[/netmask]][,...]" if $cmd eq "set" && !ESPEasy_isIPv64Range($aVal)}
+    $ret = "ip[/netmask][,ip[/netmask]][,...]" 
+      if $cmd eq "set" && !ESPEasy_isIPv64Range($aVal)}
       
   elsif ($aName eq "pollGPIOs") {
     $ret = "GPIO_No[,GPIO_No][...]"
@@ -887,23 +1000,29 @@ sub ESPEasy_Attr(@)
 
   elsif ($aName eq "parseCmdResponse") {
     my $cmds = lc join("|",keys %ESPEasy_setCmdsUsage);
-    $ret = "cmd[,cmd][...]" if $cmd eq "set" && lc($aVal) !~ /^($cmds){1}(,($cmds))*$/}
+    $ret = "cmd[,cmd][...]" 
+      if $cmd eq "set" && lc($aVal) !~ /^($cmds){1}(,($cmds))*$/}
 
   elsif ($aName eq "setState") {
-    $ret = "integer" if ($cmd eq "set" && not $aVal =~ m/^(\d+)$/)}
+    $ret = "integer" 
+      if ($cmd eq "set" && not $aVal =~ m/^(\d+)$/)}
 
   elsif ($aName eq "readingPrefixGPIO") {
-    $ret = "[a-zA-Z0-9._-/]+" if ($cmd eq "set" && $aVal !~ m/^[A-Za-z\d_\.\-\/]+$/)}
+    $ret = "[a-zA-Z0-9._-/]+"
+      if ($cmd eq "set" && $aVal !~ m/^[A-Za-z\d_\.\-\/]+$/)}
 
   elsif ($aName eq "readingSuffixGPIOState") {
-    $ret = "[a-zA-Z0-9._-/]+" if ($cmd eq "set" && $aVal !~ m/^[A-Za-z\d_\.\-\/]+$/)}
+    $ret = "[a-zA-Z0-9._-/]+"
+      if ($cmd eq "set" && $aVal !~ m/^[A-Za-z\d_\.\-\/]+$/)}
 
   elsif ($aName eq "httpReqTimeout") {
-    $ret = "3..60" if $cmd eq "set" && ($aVal < 3 || $aVal > 60)}
+    $ret = "3..60"
+      if $cmd eq "set" && ($aVal < 3 || $aVal > 60)}
       
   elsif ($aName eq "Interval") {
     ($cmd eq "set" && ($aVal !~ m/^(\d)+$/ || $aVal <10 && $aVal !=0))
-    ? $ret = "0 or >=10" : $hash->{INTERVAL} = $aVal}
+      ? $ret = "0 or >=10" 
+      : $hash->{INTERVAL} = $aVal}
 
   if (!$init_done) {
     if ($aName =~ /^disable$/ && $aVal == 1) {
@@ -1319,7 +1438,6 @@ sub ESPEasy_pollGPIOs($) #called by device
         Log3 $name, 5, "$type $name: Pin mapping ".uc $gpio." => $ESPEasy_pinMap{uc $gpio}";
         $gpio = $ESPEasy_pinMap{uc $gpio};
       }
-
       Log3 $name, 5, "$type $name: IOWrite(\$defs{$name}, $hash->{HOST}, $hash->{PORT}, $hash->{IDENT}, 1, status, gpio,".$gpio.")";
       IOWrite($hash, $hash->{HOST}, $hash->{PORT}, $hash->{IDENT}, 1, "status", "gpio,".$gpio);
     } #foreach
@@ -1680,7 +1798,7 @@ sub ESPEasy_setState($)
     next if $reading =~ /^(state|presence|_lastAction|_lastError|\w+_mode)$/;
     next if $interval && ReadingsAge($name,$reading,1) > $interval+$addTime;
     push(@ret, substr($reading,0,AttrVal($name,"setState",3))
-              .":".ReadingsVal($name,$reading,""));
+              .": ".ReadingsVal($name,$reading,""));
   }
 
   my $oState = ReadingsVal($name, "state", "");
@@ -1718,7 +1836,8 @@ sub ESPEasy_adjustValue($$$)
       my $adjVal = $formula =~ m/\$VALUE/ ? eval($formula) : eval($v.$formula);
       use warnings;
       if ($@) {
-        Log3 $name, 2, "$type $name: WARNING: attribute 'adjustValue': mad expression '$formula'";
+        Log3 $name, 2, "$type $name: WARNING: attribute 'adjustValue': "
+                      ."mad expression '$formula'";
         Log3 $name, 2, "$type $name: $@";
       }
       else {
@@ -1750,7 +1869,87 @@ sub ESPEasy_isPmInstalled($$)
 
 
 # ------------------------------------------------------------------------------
+sub ESPEasy_isAttrCombineDevices($) 
+{
+  return 0 if !defined $_[0];
+  my @ranges = split(/,| /,$_[0]);
+  foreach (@ranges) {
+    if (!($_ =~ /^([A-Za-z0-9_\.]|[A-Za-z0-9_\.][A-Za-z0-9_\.]*[A-Za-z0-9\._])$/
+    || ESPEasy_isIPv64Range($_))) 
+    {
+      return 0 
+    }
+  }
+
+  return 1;
+}
+
+
+# ------------------------------------------------------------------------------
 # check if $peer is covered by $allowed (eg. 10.1.2.3 is included in 10.0.0.0/8)
+# 1:peer address 2:allowed range
+# ------------------------------------------------------------------------------
+sub ESPEasy_isCombineDevices($$$)
+{
+  my ($peer,$espName,$allowed) = @_;
+  return $allowed if $allowed =~ m/^[01]$/;
+  
+  my @allowed = split(/,| /,$allowed);
+  foreach (@allowed) { return 1 if $espName eq $_ }
+  return 1 if ESPEasy_isPeerAllowed($peer,$allowed);
+  return 0;
+}
+
+
+# ------------------------------------------------------------------------------
+# check param to be a valid ip64 address or fqdn or hostname
+# ------------------------------------------------------------------------------
+sub ESPEasy_isValidPeer($)
+{
+  my ($addr) = @_;
+  return 0 if !defined $addr;
+  my @ranges = split(/,| /,$addr);
+  foreach (@ranges) {
+    return 0 if !( ESPEasy_isIPv64Range($_) 
+                || ESPEasy_isFqdn($_) || ESPEasy_isHostname($_) );
+  }
+
+  return 1;
+}
+
+
+# ------------------------------------------------------------------------------
+# check if given ip or ip range is guilty 
+# argument can be: 
+# - ipv4, ipv4/CIDR, ipv4/dotted, ipv6, ipv6/CIDR
+# - space or comma separated list of above.
+# ------------------------------------------------------------------------------
+sub ESPEasy_isIPv64Range($)
+{
+  my ($addr) = @_;
+  return 0 if !defined $addr;
+  my @ranges = split(/,| /,$addr);
+  foreach (@ranges) {
+    my ($ip,$nm) = split("/",$_);
+    if (ESPEasy_isIPv4($ip)) {
+      return 0 if defined $nm && !( ESPEasy_isNmDotted($nm) 
+                                 || ESPEasy_isNmCIDRv4($nm) );
+    }
+    elsif (ESPEasy_isIPv6($ip)) {
+      return 0 if defined $nm && !ESPEasy_isNmCIDRv6($nm);
+    }
+    else {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+
+# ------------------------------------------------------------------------------
+# check if $peer is covered by $allowed (eg. 10.1.2.3 is included in 10.0.0.0/8)
+# 1:peer address 2:allowed range
 # ------------------------------------------------------------------------------
 sub ESPEasy_isPeerAllowed($$)
 {
@@ -1761,8 +1960,9 @@ sub ESPEasy_isPeerAllowed($$)
   my $binPeer = ESPEasy_ip2bin($peer);
   my @a = split(/,| /,$allowed);
   foreach (@a) {
+    next if !ESPEasy_isIPv64Range($_);              # needed for combinedDevices
     my ($addr,$ip,$mask) = ESPEasy_addrToCIDR($_);
-    return 0 if !defined $ip || !defined $mask; # return if ip or mask are not guilty
+    return 0 if !defined $ip || !defined $mask;   # return if ip or mask !guilty
     my $binAllowed = ESPEasy_ip2bin($addr);
     my $binPeerCut = substr($binPeer,0,$mask);
     return 1 if ($binAllowed eq $binPeerCut);
@@ -1823,11 +2023,11 @@ sub ESPEasy_addrToCIDR($)
   my ($addr) = @_;
   my ($ip,$mask) = split("/",$addr);
   # no nm specified
-  return (ESPEasy_isIPv4($ip) ? ("$ip/32",$ip,32) : ("$ip/128",$ip,128)) if (!defined $mask);
+  return (ESPEasy_isIPv4($ip) ? ("$ip/32",$ip,32) : ("$ip/128",$ip,128)) if !defined $mask;
   # netmask is already in CIDR format and all values are valid
-  return ("$ip/$mask",$ip,$mask) if ESPEasy_isIPv4($ip) && ESPEasy_isNmCIDRv4($mask);
-  return ("$ip/$mask",$ip,$mask) if ESPEasy_isIPv6($ip) && ESPEasy_isNmCIDRv6($mask);
-
+  return ("$ip/$mask",$ip,$mask) 
+    if (ESPEasy_isIPv4($ip) && ESPEasy_isNmCIDRv4($mask)) 
+    || (ESPEasy_isIPv6($ip) && ESPEasy_isNmCIDRv6($mask));
   $mask = ESPEasy_dottedNmToCIDR($mask);
   return (undef,undef,undef) if !defined $mask;
 
@@ -1855,58 +2055,77 @@ sub ESPEasy_dottedNmToCIDR($)
 
 
 # ------------------------------------------------------------------------------
-# check if given ip or ip range is guilty 
-# argument can be: 
-# - ipv4, ipv4/CIDR, ipv4/dotted, ipv6, ipv6/CIDR
-# - space or comma separated list of above.
-# ------------------------------------------------------------------------------
-sub ESPEasy_isIPv64Range($)
+sub ESPEasy_isIPv4($) 
 {
-  my ($addr) = @_;
-  return 0 if !defined $addr;
-  my @ranges = split(/,| /,$addr);
-  foreach (@ranges) {
-    my ($ip,$nm) = split("/",$_);
-    if (ESPEasy_isIPv4($ip)) {
-      return 0 if defined $nm && !(ESPEasy_isNmDotted($nm) || ESPEasy_isNmCIDRv4($nm));
-    }
-    elsif (ESPEasy_isIPv6($ip)) {
-      return 0 if defined $nm && !ESPEasy_isNmCIDRv6($nm);
-    }
-    else {
-      return 0;
-    }
-  }
-  return 1; # accept
+  return 0 if !defined $_[0];
+  return 1 if($_[0] 
+    =~ /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/);
+  return 0;
 }
 
+# ------------------------------------------------------------------------------
+sub ESPEasy_isIPv6($)
+{
+  return 0 if !defined $_[0];
+  return 1 if ($_[0] 
+    =~ /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/);
+  return 0;
+}
 
 # ------------------------------------------------------------------------------
-sub ESPEasy_isIPv4($) {return if(!defined $_[0]); return 1 if($_[0] 
-  =~ /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/)}
+sub ESPEasy_isIPv64($)
+{
+  return 0 if !defined $_[0];
+  return 1 if ESPEasy_isIPv4($_[0]) || ESPEasy_isIPv6($_[0]);
+  return 0;
+}
+  
+# ------------------------------------------------------------------------------
+sub ESPEasy_isNmDotted($)
+{
+  return 0 if !defined $_[0];
+  return 1 if ($_[0] 
+    =~ /^(255|254|252|248|240|224|192|128|0)\.0\.0\.0|255\.(255|254|252|248|240|224|192|128|0)\.0\.0|255\.255\.(255|254|252|248|240|224|192|128|0)\.0|255\.255\.255\.(255|254|252|248|240|224|192|128|0)$/);
+  return 0;
+}
 
 # ------------------------------------------------------------------------------
-sub ESPEasy_isIPv6($) {return if(!defined $_[0]); return 1 if($_[0] 
-  =~ /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/)}
+sub ESPEasy_isNmCIDRv4($)
+{
+  return 0 if !defined $_[0];
+  return 1 if ($_[0] =~ /^([0-2]?[0-9]|3[0-2])$/);
+  return 0;
+}
 
 # ------------------------------------------------------------------------------
-sub ESPEasy_isNmDotted($)   {return if(!defined $_[0]); return 1 if($_[0] 
-  =~ /^(255|254|252|248|240|224|192|128|0)\.0\.0\.0|255\.(255|254|252|248|240|224|192|128|0)\.0\.0|255\.255\.(255|254|252|248|240|224|192|128|0)\.0|255\.255\.255\.(255|254|252|248|240|224|192|128|0)$/)}
+sub ESPEasy_isNmCIDRv6($)
+{
+  return 0 if !defined $_[0];
+  return 1 if ($_[0] =~ /^([0-9]?[0-9]|1([0-1][0-9]|2[0-8]))$/);
+  return 0;
+}
 
 # ------------------------------------------------------------------------------
-sub ESPEasy_isNmCIDRv4($)   {return if(!defined $_[0]); return 1 if($_[0] 
-  =~ /^([0-2]?[0-9]|3[0-2])$/)}
+sub ESPEasy_isFqdn($)
+{
+  return 0 if !defined $_[0];
+  return 1 if ($_[0] 
+    =~ /^(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}$)$/);
+  return 0;
+}
 
 # ------------------------------------------------------------------------------
-sub ESPEasy_isNmCIDRv6($)   {return if(!defined $_[0]); return 1 if($_[0] 
-  =~ /^([0-9]?[0-9]|1([0-1][0-9]|2[0-8]))$/)}
-
-# ------------------------------------------------------------------------------
-sub ESPEasy_isFqdn($) {return if(!defined $_[0]); return 1 if($_[0] 
-  =~ /^(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}$)$/)}
+sub ESPEasy_isHostname($)
+{
+  return 0 if !defined $_[0];
+  return 1 if ($_[0] =~ /^([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$/) 
+           && !(ESPEasy_isIPv4($_[0]) || ESPEasy_isIPv6($_[0]));
+  return 0;
+}
 
 # ------------------------------------------------------------------------------
 sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
+
 
 1;
 
@@ -2024,14 +2243,6 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Eg. fe80::/10,2001:1a59:50a9::/48,2002:1a59:50a9::,2003:1a59:50a9:acdc::36
       </li><br>
 
-    <li><a name="">deniedIPs</a><br>
-      Used to define IPs or IP ranges of ESPs which are denied to commit data.
-      <br>
-      Syntax see <a href="#ESPEasyallowedIPs">allowedIPs</a>.<br>
-      This attribute will overwrite any IP or range defined by
-      <a href="#ESPEasyallowedIPs">allowedIPs</a>.<br>
-      Default: none (no IPs are denied)</li><br>
-
     <li><a name="">authentication</a><br>
       Used to enable basic authentication for incoming requests<br>
       Note that user, pass and authentication attribute must be set to activate
@@ -2049,6 +2260,26 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Possible values: 0,1<br>
       Default: not set</li><br>
       
+    <li><a name="">combineDevices</a><br>
+      Used to gather all ESP devices of a single ESP into 1 FHEM device even if
+      different ESP devices names are used.<br>
+      Possible values: 0, 1, IPv64 address, IPv64/netmask, ESPname or a comma
+      separated list consisting of these values.<br>
+      Netmasks can be written as bitmask or dotted decimal. Domain names for dns
+      lookups are not supported.<br>
+      Default: 0 (disabled for all ESPs)<br>
+      Eg. 1 (globally enabled)<br>
+      Eg. ESP01,ESP02<br>
+      Eg. 10.68.30.1,10.69.0.0/16,ESP01,2002:1a59:50a9::/48</li><br>
+
+    <li><a name="">deniedIPs</a><br>
+      Used to define IPs or IP ranges of ESPs which are denied to commit data.
+      <br>
+      Syntax see <a href="#ESPEasyallowedIPs">allowedIPs</a>.<br>
+      This attribute will overwrite any IP or range defined by
+      <a href="#ESPEasyallowedIPs">allowedIPs</a>.<br>
+      Default: none (no IPs are denied)</li><br>
+
     <li><a name="">disable</a><br>
       Used to disable device<br>
       Possible values: 0,1<br>
@@ -2060,6 +2291,7 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Default: 10 seconds</li><br>
       
     <li><a name="ESPEasyuniqIDs">uniqIDs</a><br>
+      <b>This attribute is deprecated and will be removed soon.</b><br>
       Used to generate unique identifiers (ESPName + DeviceName)<br>
       If you disable this attribut (set to 0) then your logical devices will be
       identified (and created) by the device name, only. Can be used to collect
