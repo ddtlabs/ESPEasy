@@ -112,5 +112,13 @@
        - added function declarations (Forum #55728.msg511921)
        - new attribute combineDevices (Used to gather all ESP devices of a single ESP into 1 FHEM device even if different ESP devices names are used)
 0.6.6  - minor fixes
+0.6.7  - added attr rgbGPIOs, reading rgb, command rgb
+       - added attr colorpicker
+0.6.8  - removed attr uniqIDs
+       - presence detection simplified
+0.6.9  - fixed "argument is missing" for 'get user|pass' cmds in FHEMWEB
+0.7.0  - removed internal event-on-change-reading from setState
+0.7.1  - Command reference update
+       - Removed change log from module
 
 ```

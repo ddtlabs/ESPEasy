@@ -1,9 +1,11 @@
-# $Id: 34_ESPEasy.pm 66 2016-10-02 08:30:00Z dev0 $
+# $Id: 34_ESPEasy.pm 71 2016-10-02 08:30:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 / ESPEasy
 #
-#  Copyright 2016 by dev0 (http://forum.fhem.de/index.php?action=profile;u=7465)
+#  Copyright 2016 by dev0 
+#  FHEM forum: https://forum.fhem.de/index.php?action=profile;u=7465
+#  Github: https://github.com/ddtlabs
 #
 #  This file is part of FHEM.
 #
@@ -22,123 +24,7 @@
 #
 ################################################################################
 #
-# ESPEasy change log:
-#
-# 2016-07-20  0.1    - public release
-# 2016-07-29  0.1.1  - added internal timer to poll gpios
-#                    - added attr Interval
-#                    - added attr pollGPIOs
-#                    - improved logging
-#                    - added esp command status
-#                    - added statusRequest
-#                    - call commands are case insensitive, now
-#                    - updated command reference
-#                    - delete unknown readings
-# 2016-07-31  0.1.2  - renamed attribut interval to Interval
-#                    - presence check
-#                    - added statusRequest cmd
-#                    - added forgotten longpulse command
-# 2016-08-03  0.1.3  - added internal VERSION
-#                    - moved internal URLCMD to $hash->{helper}
-#                    - added pin mapping for Wemos D1 mini, NodeMCU, ... 
-#                      within set commands
-#                    - added state mapping (on->1 off->0) within all set commands
-#                    - added set command "clearReadings" (GPIO readings will be wiped out)
-#                    - added get command "pinMap" (displays pin mapping)
-#                    - show usage if there are too few arguments
-#                    - command reference adopted
-# 2016-08-09  0.2.0  - chanched module design to bridge/device version
-# 2016-08-10  0.2.1  - own tcp port (default 8383) for communication from esp to fhem
-#                    - added basic authentication for incoming requests
-#                    - added attribut readingPrefixGPIO
-#                    - added attribut readingSuffixGPIOState
-# 2016-08-11  0.2.2  - fixed statusRequest/presentCheck
-#                    - minor fixes: copy/paste errors...
-#                    - approved logging to better fit dev guide lines
-#                    - handle renaming of devices
-#                    - commands are case sensitive again, sorry :(
-# 2016-08-11  0.2.3  - added pwmfade command: Forum topic,55728.msg480966.html
-#                    - added raw command to send own commands to esp. 
-#                      usage: 'raw <newCommand> <param1> <param2> <...>'
-# 2016-08-12  0.2.4  - code cleanup
-#                    - fixed "use TcpServerUtils"
-#                    - removed controls_ESPEasy.txt from dev version
-# 2016-08-13  0.2.5  - fixed PERL WARNING: keys on reference is experimental
-#                      for perl versions >= 5.20?
-# 2016-08-20  0.3.0  - process json data only (ESPEasy Version Rxxx required)
-#             0.3.1  - added uniqIDs attribut
-#                    - added get user/pass
-# 2016-08-22  0.3.2  - fixed auth bug
-# 2016-08-24  0.3.3  - state will contain readingvals
-#                    - default room for bridge is ESPEasy, too.
-#                    - Log outdated ESPEasy (without json) once.
-#                    - eval JSON decoding
-# 2016-08-26  0.3.4  - ESP parameter -> Internals
-# 2016-08-27  0.3.5  - dispatch ESP paramater to device internals if changed
-#                    - added attribute setState (disable value mapping to state)
-# 2016-08-27  0.4 RC1  - code cleanup
-# 2016-08-29  0.4.1  - improved removing of illegal chars in device + reading names
-#                    - removed uniqID helper from bridge if undef device (IOwrite)
-#                    - use peer IP instead of configured IP (could be modified by NAT/PAT)
-#                    - added http response: 400 Bad Request
-#                    - added http response: 401 Unauthorized
-#                    - fixed oledcmd cmd usage string
-#                    - improved presence detection (incoming requests)
-# 2016-09-05  0.4.2  - more unique dispatch separator
-#                    - moved on|off translation for device type "SWITCH" from
-#                      ESPEasy Software to this module.
-#                    - new attribute readingSwitchText
-# 2016-09-06  0.4.3  - bug fix: Use of uninitialized value $ident:: in 
-#                      concatenation (.) or string at 34_ESPEasy.pm line 867.
-#                      Forum: topic,55728.msg488459.html
-# 2016-09-10  0.4.4  - modified behavior of attribute setState (# of characters in state, 0 = disabled)
-#                    - fixed: PERL WARNING: Use of uninitialized value in string ne at ./FHEM/34_ESPEasy.pm line 9xx.
-#                    - code and command reference cleanup
-#                    - misc logging modifications
-# 2016-09-12  0.4.5  - timestamp of reading state will not be changed if state == opened,present or absent
-#                    - added internal INTERVAL
-# 2016-09-17  0.4.6  - Attr Interval can be set 0 to disable presence check and polling
-#                    - removed deprecated code for old ESPEasy Versions without json support
-#                    - reworked dispatching values
-#                    - reworked presence detection (no more polling, check readings age)
-#                    - added attribut adjustValue (see command ref for details)
-#                    - added internal ESP_CONFIG -> EspIP:version,sleep,unit
-#                    - added internal UNIQIDS to devices
-# 2016-09-29  0.4.7  - command reference updated
-# 2016-09-30  0.4.8  - logging adopted
-# 2016-10-01  0.4.9  - fixed check of empty device name, value name and value in received data
-# 2016-10-02  0.5.0  - eval JSON decoding in http response
-#                    - removed Authorization String from debug log
-#                    - combined internals logging
-#                    - check for temporary bridge device in deleteFn and do no IOWrite
-#                      see: https://forum.fhem.de/index.php/topic,55728.msg497366.html#msg497366
-#                    - added check that fhem.pl is new enough (11000/2016-03-05)
-#                      see: https://forum.fhem.de/index.php/topic,55728.msg497094.html#msg497094
-# 2016-10-03  0.5.1  - optimized logging
-# 2016-10-03  0.5.2  - fixed: PERL WARNING: Use of uninitialized value in substitution (s///) at ./FHEM/34_ESPEasy.pm line 569.
-# 2016-10-04  0.5.3  - adopted deletion of keys in hash->helper if a device will be deleted
-#                    - fixed get <bridge> user/pass
-#                    - code cleanup
-#                    - fixed: PERL WARNING: Ambiguous use of -time resolved as -&time() at ./FHEM/34_ESPEasy.pm line 1283
-# 2016-10-06  0.5.4  - improved closing tcp connects
-# 2016-10-23  0.6.0  - increase verbose level for startup/shutdown log messages
-#                    - moved attribute handling to NotifyFn
-#                    - new attribute allowedIPs
-#                    - new attribute parseCmdResponse
-#                    - disabled parsing httpRequests by default, enable with attr parseCmdResponse
-#                    - more relaxed checking of existenz of 'esp name' and 'device name'.
-#                    - dispatch error msgs to device, show WARNING in internals
-#                    - added default attributes
-# 2016-10-23  0.6.1  - changed default behavior allowedIPs feature to 'allow'
-# 2016-10-25  0.6.2  - added attribut deniedIPs
-# 2016-10-26  0.6.3  - close open tcp session immediately if ESP is configured 
-#                      to go to deep sleep (EPSEasy bug?)
-# 2016-10-29  0.6.4  - fixed faulty presence detection after FHEM restart
-# 2016-11-05  0.6.5  - added space between reading und value in state (Forum #55728.msg515626)
-#                    - attribute uniqIDs is deprecated and will be removed soon
-#                    - added function declarations (Forum #55728.msg511921)
-#                    - new attribute combineDevices (Used to gather all ESP devices of a single ESP into 1 FHEM device even if different ESP devices names are used)
-# 2016-11-10  0.6.6  - minor fixes
+# ESPEasy change log can be found here: https://github.com/ddtlabs/ESPEasy
 #
 ################################################################################
 
@@ -151,15 +37,17 @@ use Data::Dumper;
 use MIME::Base64;
 use TcpServerUtils;
 use HttpUtils;
+use Color;
 
 # ------------------------------------------------------------------------------
 # global and default values
 # ------------------------------------------------------------------------------
-my $ESPEasy_minESPEasyBuild = 128;     # informational
-my $ESPEasy_minJsonVersion  = 1.02;    # checked in received data
-my $ESPEasy_version         = 0.66;    # Version of this module
-my $dInterval               = 300;     # default interval
-my $dhttpReqTimeout         = 10;      # default timeout http req + selfdestroy
+my $ESPEasy_minESPEasyBuild = 128;         # informational
+my $ESPEasy_minJsonVersion  = 1.02;        # checked in received data
+my $ESPEasy_version         = 0.71;        # Version of this module
+
+my $d_Interval               = 300;        # default interval
+my $d_httpReqTimeout         = 10;         # default timeout http req
 
 # ------------------------------------------------------------------------------
 # "setCmds" => "min. number of parameters"
@@ -209,10 +97,9 @@ my %ESPEasy_setCmdsUsage = (
   #https://forum.fhem.de/index.php/topic,55728.msg480966.html#msg480966
   "pwmfade"        => "pwmfade <pin> <target> <duration>",
   "raw"            => "raw <esp_comannd> <...>",
-
   "statusrequest"  => "statusRequest",
   "clearreadings"  => "clearReadings",
-  "help"           => "help <".join("|", sort keys %ESPEasy_setCmds).">"
+  "help"           => "help <".join("|", sort keys %ESPEasy_setCmds).">",
 );
 
 # ------------------------------------------------------------------------------
@@ -288,9 +175,13 @@ sub ESPEasy_paramPos($$);
 sub ESPEasy_paramCount($);
 sub ESPEasy_clearReadings($);
 sub ESPEasy_checkVersion($$$$);
-sub ESPEasy_checkPresence($;$);
-sub ESPEasy_setESPConfig($);
+sub ESPEasy_checkPresence($);
 sub ESPEasy_setState($);
+sub ESPEasy_setRGB($$@);
+sub ESPEasy_gpio2RGB($);
+sub ESPEasy_adjustSetCmds($);
+sub ESPEasy_configureForRGB($$$);
+sub ESPEasy_devStateIcon($);
 sub ESPEasy_adjustValue($$$);
 sub ESPEasy_isPmInstalled($$);
 sub ESPEasy_isAttrCombineDevices($);
@@ -328,6 +219,8 @@ sub ESPEasy_Initialize($)
   $hash->{DeleteFn}   = "ESPEasy_Delete";
   $hash->{RenameFn}   = "ESPEasy_Rename";
   $hash->{NotifyFn}   = "ESPEasy_Notify";
+#  $hash->{FW_summaryFn} = "ESPEasy_SummaryFn";
+
 
   #provider
   $hash->{ReadFn}     = "ESPEasy_Read"; #ESP http request will be parsed here
@@ -344,6 +237,7 @@ sub ESPEasy_Initialize($)
                        ."authentication:1,0 "
                        ."autocreate:1,0 "
                        ."autosave:1,0 "
+                       ."colorpicker:RGB,HSV,HSVp "
                        ."deniedIPs "
                        ."disable:1,0 "
                        ."do_not_notify:0,1 "
@@ -359,7 +253,7 @@ sub ESPEasy_Initialize($)
                        ."readingSwitchText:1,0 "
                        ."setState:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,100 "
                        ."combineDevices "
-                       ."uniqIDs:1,0 "
+                       ."rgbGPIOs: "
                        .$readingFnAttributes;
 }
 
@@ -411,7 +305,7 @@ sub ESPEasy_Define($$)  # only called when defined, not on reload.
     $modules{ESPEasy}{defptr}{BRIDGE} = $hash;
     Log3 $hash->{NAME}, 2, "$type $name: Opening bridge on port tcp/$port (v$ESPEasy_version)";
     ESPEasy_tcpServerOpen($hash);
-    if ($init_done && !defined( $hash->{OLDDEF})) {
+    if ($init_done && !defined($hash->{OLDDEF})) {
     #if (not defined getKeyValue($type."_".$name."-firstrun")) {
       CommandAttr(undef,"$name room $type");
       CommandAttr(undef,"$name group $type Bridge");
@@ -428,7 +322,7 @@ sub ESPEasy_Define($$)  # only called when defined, not on reload.
 
   #--- DEVICE -------------------------------------------------
   else {
-    $hash->{INTERVAL} = $dInterval;
+    $hash->{INTERVAL} = $d_Interval;
     $hash->{SUBTYPE} = "device";
     AssignIoPort($hash,$iodev) if(not defined $hash->{IODev});
     InternalTimer(gettimeofday()+5+rand(5), "ESPEasy_statusRequest", $hash);
@@ -465,7 +359,7 @@ sub ESPEasy_Get($@)
   } elsif (exists($hash->{READINGS}{$reading})) {
     return defined($hash->{READINGS}{$reading})
       ? $hash->{READINGS}{$reading}{VAL}
-      : "no such reading: $reading";
+      : "reading $reading exists but has no value defined";
 
   } else {
     $ret = "unknown argument $reading, choose one of";
@@ -474,7 +368,7 @@ sub ESPEasy_Get($@)
   }
     
   return ($hash->{SUBTYPE} eq "bridge") 
-    ? $ret . " user:noArgs pass:noArgs" 
+    ? $ret . " user:noArg pass:noArg" 
     : $ret . " pinMap:noArg";
   }
 }
@@ -534,6 +428,7 @@ sub ESPEasy_Set($$@)
 
   # ----- DEVICE ----------------------------------------------
   else {
+    ESPEasy_adjustSetCmds($hash);
 
     # are there all required argumets?
     if($ESPEasy_setCmds{$cmd} && scalar @params < $ESPEasy_setCmds{$cmd}) {
@@ -543,12 +438,29 @@ sub ESPEasy_Set($$@)
              "parameter(s)\n"."Usage: 'set $name $ESPEasy_setCmdsUsage{$cmd}'";
     }
 
+    # enable rgb commands if attr rgbGPIOs is set
+    if ($cmd =~ /^rgb|on|off|toggle$/i) {
+      if (AttrVal($name,"rgbGPIOs",0)) {
+        my $ret = ESPEasy_setRGB($hash,$cmd,@params);
+        return $ret if ($ret);
+      }
+      else {
+        Log3 $name, 2, "$type $name: Command '$cmd' is deactivated until attribute 'rgbGPIOs' is set.";
+        return "Command '$cmd' is deactivated until attribute 'rgbGPIOs' is set.";
+      }
+      return undef;
+    }
+
     # handle unknown cmds
-    if(!exists $ESPEasy_setCmds{$cmd}) {
+    if (!exists $ESPEasy_setCmds{$cmd}) {
       my @cList = sort keys %ESPEasy_setCmds;
       my $clist = join(" ", @cList);
       my $hlist = join(",", @cList);
-      $clist =~ s/help/help:$hlist/; # add all cmds as params to help cmd
+      foreach (@cList) {$clist =~ s/ $_/ $_:noArg/ if $ESPEasy_setCmds{$_} == 0}
+      my $cp = AttrVal($name,"colorpicker","HSVp");
+      $clist =~ s/rgb/rgb:colorpicker,$cp/; # add colorPicker if rgb cmd is available
+      $clist =~ s/help/help:$hlist/;        # add all cmds as params to help cmd
+      Log3 $name, 2, "$type $name: Unknown set command $cmd" if $cmd ne "?";
       return "Unknown argument $cmd, choose one of ". $clist;
     }
 
@@ -578,8 +490,6 @@ sub ESPEasy_Set($$@)
       $params[$pp-1] = $state;
     }
 
-
-
     if ($cmd eq "help") {
       my $usage = $ESPEasy_setCmdsUsage{$params[0]};
       $usage     =~ s/Note:/\nNote:/g;
@@ -599,20 +509,17 @@ sub ESPEasy_Set($$@)
     Log3 $name, 5, "$type $name: IOWrite(\$defs{$hash->{NAME}}, $hash->{HOST}, $hash->{PORT}, ".
                    "$hash->{IDENT}, $cmd, ".join(",",@params).")";
 
-    Log3 $name, 2, "$type $name: Sending commands is not recommended while uniqIDs mode is disabled."
-      if (defined $hash->{UNIQIDS} && $hash->{UNIQIDS} == 0 && scalar keys %{$hash->{helper}{internals}} > 1);
-
     Log3 $name, 2, "$type $name: Device seems to be in sleep mode, sending command nevertheless."
-      if (defined $hash->{helper}{internals}{$hash->{HOST}}{SLEEP}
-      && $hash->{helper}{internals}{$hash->{HOST}}{SLEEP} ne "0");
+      if (defined $hash->{SLEEP} && $hash->{SLEEP} ne "0");
 
-    my $parseCmd = ESPEasy_isParseCmd($hash,$cmd);
+    my $parseCmd = ESPEasy_isParseCmd($hash,$cmd); # should response be parsed and dispatched
     IOWrite($hash, $hash->{HOST}, $hash->{PORT}, $hash->{IDENT}, $parseCmd, $cmd, @params);
 
   } # DEVICE
 
 return undef
 }
+
 
 # ------------------------------------------------------------------------------
 sub ESPEasy_Read($) {
@@ -721,24 +628,7 @@ sub ESPEasy_Read($) {
       return;
     }
 
-    # deprecated
-    # check that 'device name' is set at least if uniqIDs is disabled
-    if (!AttrVal($bname,"uniqIDs",1) && $espDevName eq "") {
-      Log3 $bname, 2, "$btype $name: WARNIING 'device name' missing ($peer). "
-                     ."Check your ESP config or enable uniqIDs. "
-                     ."Skip processing data.";
-      Log3 $bname, 2, "$btype $name: Data: $data[1]";
-      return;
-    }
-
-    my $ident;
-
-    # deprecated
-    if(!AttrVal($bname,"uniqIDs",1)) {
-      $ident = $espDevName
-    }
-
-    $ident = ESPEasy_isCombineDevices($peer,$espName,AttrVal($bname,"combineDevices",0))
+    my $ident = ESPEasy_isCombineDevices($peer,$espName,AttrVal($bname,"combineDevices",0))
       ? $espName ne "" ? $espName : $peer
       : $espName.($espName ne "" && $espDevName ne "" ? "_" : "").$espDevName;
 
@@ -797,7 +687,7 @@ sub ESPEasy_Write($$$$$@) #called from logical's IOWrite (end of SetFn)
   my ($name,$type,$self) = ($hash->{NAME},$hash->{TYPE},ESPEasy_whoami()."()");
 
   if ($cmd eq "cleanup") {
-    delete $hash->{helper}{received}{$ip};
+    delete $hash->{helper}{received};
     return undef;
   }
 
@@ -840,7 +730,7 @@ sub ESPEasy_Notify($$)
 
       elsif ($3 eq "Interval") {
         if (defined $1) {
-          $hash->{INTERVAL} = $dInterval;
+          $hash->{INTERVAL} = $d_Interval;
         }
         elsif (defined $4 && $4 eq "0") {
           $hash->{INTERVAL} = "disabled";
@@ -947,61 +837,54 @@ sub ESPEasy_Attr(@)
   
   # device attributes
   if (defined $hash->{SUBTYPE} && $hash->{SUBTYPE} eq "bridge" 
-  && ($aName =~ /(^Interval|pollGPIOs|IODev|setState|readingSwitchText)$/
-  ||  $aName =~ /^(readingPrefixGPIO|readingSuffixGPIOState|adjustValue)$/
-  ||  $aName =~ /^(presenceCheck|parseCmdResponse)$/)) {
+  && ($aName =~ m/(^Interval|pollGPIOs|IODev|setState|readingSwitchText)$/
+  ||  $aName =~ m/^(readingPrefixGPIO|readingSuffixGPIOState|adjustValue)$/
+  ||  $aName =~ m/^(presenceCheck|parseCmdResponse|rgbGPIOs|colorpicker)$/)) {
     Log3 $name, 2, "$type $name: Attribut '$aName' can not be used by bridge";
     return "$type: attribut '$aName' cannot be used by bridge device";  
   }
   # bridge attributes
   elsif (defined $hash->{SUBTYPE} && $hash->{SUBTYPE} eq "device"
-  && ($aName =~ /^(autocreate|autosave|authentication|httpReqTimeout)$/
-  ||  $aName =~ /^(allowedIPs|deniedIPs|combineDevices)$/ )) {
+  && ($aName =~ m/^(autocreate|autosave|authentication|httpReqTimeout)$/
+  ||  $aName =~ m/^(allowedIPs|deniedIPs|combineDevices)$/ )) {
     Log3 $name, 2, "$type $name: Attribut '$aName' can be used with "
                   ."bridge device, only";
     return "$type: attribut '$aName' can be used with the bridge device, only";
   }
 
-  elsif ($aName =~ /^autosave|autocreate|authentication|disable$/
-      || $aName =~ /^presenceCheck|readingSwitchText$/) {
+  elsif ($aName =~ m/^autosave|autocreate|authentication|disable$/
+      || $aName =~ m/^presenceCheck|readingSwitchText$/) {
     $ret = "0,1" if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/)}
-
-  elsif ($aName =~ /^uniqIDs$/) {
-    if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/) {
-      $ret = "0,1" 
-    }
-    elsif ($cmd eq "set" && $aVal eq "0") {
-      Log3 $name, 1, $type.':';
-      Log3 $name, 1, $type.': __        ___    ____  _   _ ___ _   _  ____ ';
-      Log3 $name, 1, $type.': \ \      / / \  |  _ \| \ | |_ _| \ | |/ ___|';
-      Log3 $name, 1, $type.':  \ \ /\ / / _ \ | |_) |  \| || ||  \| | |  _ ';
-      Log3 $name, 1, $type.':   \ V  V / ___ \|  _ <| |\  || || |\  | |_| |';
-      Log3 $name, 1, $type.':    \_/\_/_/   \_\_| \_\_| \_|___|_| \_|\____|';
-      Log3 $name, 1, $type.':';
-      Log3 $name, 1, "$type $name: Attribut $aName is deprecated and will be "
-                    ."removed from next release. Please update your config soon.";
-      Log3 $name, 1, "$type $name: Use attribute combineDevices instead.";
-                 
-      Log3 $name, 1, $type.':';
-      $hash->{WARNING} = "Attribute $aName is deprecated and will be removed soon!";
-    } }    
 
   elsif ($aName eq "combineDevices") {
     $ret = "0 | 1 | ESPname | ip[/netmask][,ip[/netmask]][,...]" 
       if $cmd eq "set" && !(ESPEasy_isAttrCombineDevices($aVal) || $aVal =~ m/^[01]$/ )}
       
-  elsif ($aName =~ /^(allowedIPs|deniedIPs)$/) {
+  elsif ($aName =~ m/^(allowedIPs|deniedIPs)$/) {
     $ret = "ip[/netmask][,ip[/netmask]][,...]" 
       if $cmd eq "set" && !ESPEasy_isIPv64Range($aVal)}
       
-  elsif ($aName eq "pollGPIOs") {
+#  elsif ($aName =~ m/^rgbGPIOs$/) {
+#    if ($cmd eq "set" && $aVal !~ m/^[a-zA-Z]{0,2}[0-9]+(,[a-zA-Z]{0,2}[0-9]+)*$/) {
+#      $ret = "GPIO_No[,GPIO_No][...]"
+#    }
+#    else {
+##      ESPEasy_adjustSetCmds($cmd,$aName)
+#    }
+#  }
+
+  elsif ($aName =~ m/^pollGPIOs|rgbGPIOs$/) {
     $ret = "GPIO_No[,GPIO_No][...]"
-      if $cmd eq "set" && $aVal !~ /^[a-zA-Z]{0,2}[0-9]+(,[a-zA-Z]{0,2}[0-9]+)*$/}
+      if $cmd eq "set" && $aVal !~ m/^[a-zA-Z]{0,2}[0-9]+(,[a-zA-Z]{0,2}[0-9]+)*$/}
+
+  elsif ($aName eq "colorpicker") {
+    $ret = "RGB | HSV | HSVp" 
+      if ($cmd eq "set" && not $aVal =~ m/^(RGB|HSV|HSVp)$/)}
 
   elsif ($aName eq "parseCmdResponse") {
     my $cmds = lc join("|",keys %ESPEasy_setCmdsUsage);
     $ret = "cmd[,cmd][...]" 
-      if $cmd eq "set" && lc($aVal) !~ /^($cmds){1}(,($cmds))*$/}
+      if $cmd eq "set" && lc($aVal) !~ m/^($cmds){1}(,($cmds))*$/}
 
   elsif ($aName eq "setState") {
     $ret = "integer" 
@@ -1110,7 +993,7 @@ sub ESPEasy_dispatch($$$@) #called by bridge -> send to logical devices
   my $bhash = $modules{ESPEasy}{defptr}{BRIDGE};
   my $bname = $bhash->{NAME};
 
-  my $ui = (AttrVal($bname,"uniqIDs",1)) ? 1 : 0;
+  my $ui = 1; #can be removed later
   my $as = (AttrVal($bname,"autosave",AttrVal("global","autosave",1))) ? 1 : 0;
   my $ac = (AttrVal($bname,"autocreate",AttrVal("global","autoload_undefined_devices",1))) ? 1 : 0;
   my $msg = $ident."::".$host."::".$ac."::".$as."::".$ui."::".join("|||",@values);
@@ -1151,18 +1034,16 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
   if (!($name) && $ac eq "1") {
     $name = ESPEasy_autocreate($IOhash,$ident,$ip,$as);
     # cleanup helper
-    delete $IOhash->{helper}{autocreate}{$ip}{$ident} 
-      if defined $IOhash->{helper}{autocreate}{$ip}{$ident};
-    delete $IOhash->{helper}{autocreate}{$ip}
-      if scalar keys %{$IOhash->{helper}{autocreate}{$ip}} == 0;
+    delete $IOhash->{helper}{autocreate}{$ident} 
+      if defined $IOhash->{helper}{autocreate}{$ident};
     delete $IOhash->{helper}{autocreate}
       if scalar keys %{$IOhash->{helper}{autocreate}} == 0;
   }
   # autocreate is disabled
   elsif (!($name) && $ac eq "0") {
     Log3 $IOname, 2, "$type $IOname: autocreate is disabled (ident: $ident)"
-      if not defined $IOhash->{helper}{autocreate}{$ip}{$ident};
-    $IOhash->{helper}{autocreate}{$ip}{$ident} = "disabled";
+      if not defined $IOhash->{helper}{autocreate}{$ident};
+    $IOhash->{helper}{autocreate}{$ident} = "disabled";
     return $ident;
   }
   
@@ -1172,7 +1053,6 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
   Log3 $name, 5, "$type $name: Received: $msg";
 
   if (defined $hash && $hash->{TYPE} eq "ESPEasy" && $hash->{SUBTYPE} eq "device") {
-    $hash->{UNIQIDS} = $ui;
     my @logInternals;
     foreach (@v) {
       my ($cmd,$reading,$value,$vType) = split("\\|\\|",$_);
@@ -1189,7 +1069,7 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
 
         # map value to on/off if device is a switch
         $value = ($value eq "1") ? "on" : "off" 
-          if ($vType == 10 && AttrVal($name,"readingSwitchText",1) 
+          if ($vType == 10 && AttrVal($name,"readingSwitchText",1) && !AttrVal($name,"rgbGPIOs",0) 
           && $value =~ /^(0|1)$/);
 
         # attr adjustValue
@@ -1199,28 +1079,38 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
         Log3 $name, 4, "$type $name: $reading: $value";
 
         # used for presence detection
-        $hash->{helper}{received}{$reading} = $ip;
+        $hash->{helper}{received}{$reading} = time();
 
-        if (exists ($hash->{"WARNING_$ip"})) {
-          if (defined $hash->{"WARNING_$ip"}) {
-            Log3 $name, 2, "$type $name: RESOLVED: ".$hash->{"WARNING_$ip"};
+        # delete warning if there is any
+        if (exists ($hash->{"WARNING"})) {
+          if (defined $hash->{"WARNING"}) {
+            Log3 $name, 2, "$type $name: RESOLVED: ".$hash->{"WARNING"};
           }
-          delete $hash->{"WARNING_$ip"};
+          delete $hash->{"WARNING"};
+        }
+
+        # recalc RGB reading if a PWM channel has changed
+        if (AttrVal($name,"rgbGPIOs",0) && $reading =~ /\d$/i) {
+          my ($r,$g,$b) = ESPEasy_gpio2RGB($hash);
+          if (($r ne "" && uc ReadingsVal($name,"rgb","") ne uc $r.$g.$b) 
+          || ReadingsAge($name,"rgb",0) > 5 ) {
+            readingsSingleUpdate($hash, "rgb", $r.$g.$b, 1);
+          }
         }
 
       }
 
       # --- setInternal ---------------------------------------------
       elsif ($cmd eq "i") {
-        $hash->{helper}{internals}{$ip}{uc($reading)} = $value;
+        $hash->{"ESP_".uc($reading)} = $value;
         push(@logInternals,"$reading:$value");
       }
 
       # --- Error ---------------------------------------------------
       elsif ($cmd eq "e") {
-        if (!defined $hash->{"WARNING_$ip"} || $hash->{"WARNING_$ip"} ne $value) {
+        if (!defined $hash->{"WARNING"} || $hash->{"WARNING"} ne $value) {
           Log3 $name, 2, "$type $name: WARNING: $value";
-          $hash->{"WARNING_$ip"} = $value;
+          $hash->{"WARNING"} = $value;
         }
         #readingsSingleUpdate($hash, $reading, $value, 1);
       }
@@ -1238,8 +1128,8 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
 
     Log3 $name, 5, "$type $name: Internals: ".join(" ",@logInternals)
       if scalar @logInternals > 0;
-    ESPEasy_setESPConfig($hash);
-    ESPEasy_checkPresence($hash,$ip);
+
+    ESPEasy_checkPresence($hash) if ReadingsVal($name,"presence","") ne "present";
     ESPEasy_setState($hash);
 
   }
@@ -1268,7 +1158,7 @@ sub ESPEasy_autocreate($$$$)
     $cmdret= CommandAttr(undef, "$devname room $IOhash->{TYPE}");
     $cmdret= CommandAttr(undef, "$devname group $IOhash->{TYPE} Device");
     $cmdret= CommandAttr(undef, "$devname setState 3");
-    $cmdret= CommandAttr(undef, "$devname Interval $dInterval");
+    $cmdret= CommandAttr(undef, "$devname Interval $d_Interval");
     $cmdret= CommandAttr(undef, "$devname presenceCheck 1");
     $cmdret= CommandAttr(undef, "$devname readingSwitchText 1");
     if (AttrVal($IOname,"autosave",AttrVal("global","autosave",1))) {
@@ -1315,7 +1205,7 @@ sub ESPEasy_httpRequest($$$$$$@)
   Log3 $name, 4, "$type $name: Send $cmd$plist to $host for ident $ident" if ($cmd !~ /^(status)/);
 
 
-  my $timeout = AttrVal($name,"httpReqTimeout",$dhttpReqTimeout);
+  my $timeout = AttrVal($name,"httpReqTimeout",$d_httpReqTimeout);
   my $httpParams = {
     url         => $url,
     timeout     => $timeout,
@@ -1418,14 +1308,11 @@ sub ESPEasy_pollGPIOs($) #called by device
   my $name  = $hash->{NAME};
   my $type  = $hash->{TYPE};
 
-  my $sleep = $hash->{helper}{internals}{$hash->{HOST}}{SLEEP};
+  my $sleep = $hash->{SLEEP};
   my $a = AttrVal($name,'pollGPIOs',undef);
 
   if (!defined $a) {
     # do nothing, just return
-  }
-  elsif (defined $hash->{UNIQIDS} && $hash->{UNIQIDS} == 0) {
-    Log3 $name, 1, "$type $name: Polling of GPIOs is not possible as long as uniqIDs are disabled.";
   }
   elsif (defined $sleep && $sleep eq "1") {
     Log3 $name, 1, "$type $name: Polling of GPIOs is not possible as long as deep sleep mode is active.";
@@ -1465,10 +1352,10 @@ sub ESPEasy_resetTimer($;$)
     Log3 $name, 5, "$type $name: internalTimer stopped";
     return undef;
   }
-  return undef if AttrVal($name,"Interval",$dInterval) == 0;
+  return undef if AttrVal($name,"Interval",$d_Interval) == 0;
     
   unless(IsDisabled($name)) {
-    my $s  = AttrVal($name,"Interval",$dInterval) + rand(5);
+    my $s  = AttrVal($name,"Interval",$d_Interval) + rand(5);
     my $ts = $s + gettimeofday();
     Log3 $name, 5, "$type $name: Start internalTimer +".int($s)." => ".FmtDateTime($ts);
     InternalTimer($ts, "ESPEasy_statusRequest", $hash);
@@ -1655,9 +1542,7 @@ sub ESPEasy_clearReadings($)
 
   if (scalar @dr >= 1) {
     delete $hash->{helper}{received};
-    delete $hash->{helper}{presence};
-    delete $hash->{helper}{internals};
-    delete $hash->{ESP_CONFIG};
+    delete $hash->{helper}{fpc};        # used in checkPresence
     Log3 $name, 3, "$type $name: Readings [".join(",",@dr)."] wiped out";
   }
 
@@ -1689,95 +1574,33 @@ sub ESPEasy_checkVersion($$$$)
 
 
 # ------------------------------------------------------------------------------
-sub ESPEasy_checkPresence($;$)
+sub ESPEasy_checkPresence($)
 {
-  my ($hash,$host) = @_;
+  my ($hash,$isPresent) = @_;
   my $name = $hash->{NAME};
   my $type = $hash->{TYPE};
-  my $interval = AttrVal($name,'Interval',$dInterval);
-  my $addTime = 3; # if there is extreme heavy system load
-
-  if (defined $host) {
-    $hash->{helper}{presence}{$host} = "present";
-  }
+  my $interval = AttrVal($name,'Interval',$d_Interval);
+  my $addTime = 10; # if there is extreme heavy system load
 
   return undef if AttrVal($name,'presenceCheck',1) == 0;
   return undef if $interval == 0;
-  ###
-  # update presence only if 1st check was $interval seconds ago.
-  $hash->{helper}{firstPresenceCheck} = time() if (!defined $hash->{helper}{firstPresenceCheck});
-  return undef if ((time() - $hash->{helper}{firstPresenceCheck}) <= $interval);
-  ###
 
-  # check each received ip
-  foreach my $ip (keys %{$hash->{helper}{presence}}) {
-    $hash->{helper}{presence}{$ip} = "absent";
-    # check each received reading
-    foreach my $reading (keys %{$hash->{helper}{received}}) {
-      next if $hash->{helper}{received}{$reading} ne $ip;
-      if (ReadingsAge($name,$reading,0) < $interval+$addTime) {
-        #dev is present if any reading is newer than INTERVAL+$addTime
-        $hash->{helper}{presence}{$ip} = "present";
-        last;
-      }
+  my $presence = "absent";
+  # check each received reading
+  foreach my $reading (keys %{$hash->{helper}{received}}) {
+    if (ReadingsAge($name,$reading,0) < $interval+$addTime) {
+      #dev is present if any reading is newer than INTERVAL+$addTime
+      $presence = "present";
+      last;
     }
   }
 
-  ###  
-  # no values received within $interval for no ip
-  if (!scalar keys %{$hash->{helper}{presence}}) {
-    #event-on-change-reading only
-    if (ReadingsVal($name,"presence","unknown") ne "absent") {
-      readingsSingleUpdate($hash,"presence","absent",1);
-      Log3 $name, 4, "$type $name: presence: absent";
-    }
+  # update presence only if FirstPrecenceCheck is $interval seconds ago.
+  $hash->{helper}{fpc} = time() if (!defined $hash->{helper}{fpc});
+  if ($presence eq "present" || (time() - $hash->{helper}{fpc}) > $interval) {
+    readingsSingleUpdate($hash,"presence",$presence,1);
+    Log3 $name, 4, "$type $name: presence: $presence";
   }
-
-  # at least 1 value was received since last restart
-  else {  
-  ###
-    my $presence; my @ad;
-    my $i = 0; my $p = 0;
-    foreach my $ip (keys %{$hash->{helper}{presence}}) {
-      if ($hash->{helper}{presence}{$ip} eq "absent") {
-        push(@ad,$ip); 
-        $p++;
-      }
-      $i++
-    }
-    if    ($p == 0)  {$presence = "present"}
-    elsif ($p == $i) {$presence = "absent"}
-    else             {$presence = "partial absent (".join(",",@ad).")"}
-
-    #event-on-change-reading only
-    if ($presence ne ReadingsVal($name,"presence","unknown")) {
-      readingsSingleUpdate($hash,"presence",$presence,1);
-      Log3 $name, 4, "$type $name: presence: $presence";
-    }
-
-  ###
-  } # else (!scalar keys %{$hash->{helper}{presence}})
-  ###
-
-  return undef;
-}
-
-
-# ------------------------------------------------------------------------------
-sub ESPEasy_setESPConfig($)
-{
-  my ($hash) = @_;
- 
-  my @config;
-  foreach my $ip (sort keys %{$hash->{helper}{internals}}) {
-    my @v;
-    foreach my $internal (sort keys %{$hash->{helper}{internals}{$ip}}) {
-      push(@v,substr($internal,0,1).$hash->{helper}{internals}{$ip}{$internal});
-    }
-    push(@config,$ip.":".join(",",@v));
-    s/:B/:R/ for @config; #just cosmetically 
-  }
-  $hash->{ESP_CONFIG} = join(" | ",@config);
 
   return undef;
 }
@@ -1790,30 +1613,152 @@ sub ESPEasy_setState($)
   my $name = $hash->{NAME};
   my $type = $hash->{TYPE};
   return undef if not AttrVal($name,"setState",1);
-  my $interval = AttrVal($name,"Interval",$dInterval);
-  my $addTime = 3;
 
-  my @ret;
-  foreach my $reading (sort keys %{$hash->{helper}{received}}) {
-    next if $reading =~ /^(state|presence|_lastAction|_lastError|\w+_mode)$/;
-    next if $interval && ReadingsAge($name,$reading,1) > $interval+$addTime;
-    push(@ret, substr($reading,0,AttrVal($name,"setState",3))
-              .": ".ReadingsVal($name,$reading,""));
+  if (AttrVal($name,"rgbGPIOs",0)) {
+    my ($r,$g,$b) = ESPEasy_gpio2RGB($hash);
+    if ($r ne "") {
+      readingsSingleUpdate($hash,"state", "R: $r G: $g B: $b", 1)
+    }
   }
 
-  my $oState = ReadingsVal($name, "state", "");
-  my $presence = ReadingsVal($name, "presence", "opened");
-
-  if ($presence eq "absent" && $oState ne "absent") {
-    readingsSingleUpdate($hash,"state","absent", 1 );
-    delete $hash->{helper}{received};
-  }
   else {
-    my $nState = (scalar @ret >= 1) ? join(" ",@ret) : $presence;
-    readingsSingleUpdate($hash,"state",$nState, 1 ) if ($oState ne $nState);
+    my $interval = AttrVal($name,"Interval",$d_Interval);
+    my $addTime = 3;
+    my @ret;
+    foreach my $reading (sort keys %{$hash->{helper}{received}}) {
+      next if $reading =~ /^(state|presence|_lastAction|_lastError|\w+_mode)$/;
+      next if $interval && ReadingsAge($name,$reading,1) > $interval+$addTime;
+      push(@ret, substr($reading,0,AttrVal($name,"setState",3))
+                .": ".ReadingsVal($name,$reading,""));
+    }
+
+    my $oState = ReadingsVal($name, "state", "");
+    my $presence = ReadingsVal($name, "presence", "opened");
+
+    if ($presence eq "absent" && $oState ne "absent") {
+      readingsSingleUpdate($hash,"state","absent", 1 );
+      delete $hash->{helper}{received};
+    }
+    else {
+      my $nState = (scalar @ret >= 1) ? join(" ",@ret) : $presence;
+      readingsSingleUpdate($hash,"state",$nState, 1 ); # if ($oState ne $nState);
+    }
   }
 
   return undef;
+}
+
+
+# ------------------------------------------------------------------------------
+sub ESPEasy_setRGB($$@)
+{
+  my ($hash,$cmd,@p) = @_;
+  my ($type,$name) = ($hash->{TYPE},$hash->{NAME});
+  my ($rg,$gg,$bg) = split(",",AttrVal($name,"rgbGPIOs",""));
+  my ($r,$g,$b);
+  
+  my $rgb = $p[0] if $cmd =~ m/^rgb$/i;
+#  return undef if !defined $rgb;
+
+  $rg = $ESPEasy_pinMap{uc $rg} if defined $ESPEasy_pinMap{uc $rg};
+  $gg = $ESPEasy_pinMap{uc $gg} if defined $ESPEasy_pinMap{uc $gg};
+  $bg = $ESPEasy_pinMap{uc $bg} if defined $ESPEasy_pinMap{uc $bg};
+
+  if ($cmd =~ m/^(1|on)$/ || ($cmd =~ m/^rgb$/i && $rgb =~ m/^(1|on)$/)) {
+    $rgb = "FFFFFF" }
+  elsif ($cmd =~ m/^(0|off)$/ || ($cmd =~ m/^rgb$/i && $rgb =~ m/^(0|off)$/)) { 
+    $rgb = "000000" }
+  elsif ($cmd =~ m/^toggle$/i || ($cmd =~ m/^rgb$/i && $rgb =~ m/^toggle$/i)) { 
+    $rgb = ReadingsVal($name,"rgb","000000") ne "000000" ? "000000" : "FFFFFF" 
+  }
+
+  if ($rgb =~ m/^([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})/) {
+    ($r,$g,$b) = (hex($1), hex($2), hex($3));
+  }
+  else {
+    Log3 $name, 2, "$type $name: set $name $cmd $rgb: "
+          ."'$rgb' is not a valid RGB value.";
+    return "'$rgb' is not a valid RGB value.";
+  }
+  ESPEasy_Set($hash, $name, "pwm", ("$rg", $r*4));
+  ESPEasy_Set($hash, $name, "pwm", ("$gg", $g*4));
+  ESPEasy_Set($hash, $name, "pwm", ("$bg", $b*4));
+  readingsSingleUpdate($hash, "rgb", uc $rgb, 1);
+
+  return undef;
+}
+
+
+# ------------------------------------------------------------------------------
+sub ESPEasy_gpio2RGB($)
+{
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+  my ($r,$g,$b,$rgb);
+  my $a = AttrVal($name,"rgbGPIOs",undef);
+  return undef if !defined $a;
+  my ($gr,$gg,$gb) = split(",",AttrVal($name,"rgbGPIOs",""));
+
+  $gr = $ESPEasy_pinMap{uc $gr} if defined $ESPEasy_pinMap{uc $gr};
+  $gg = $ESPEasy_pinMap{uc $gg} if defined $ESPEasy_pinMap{uc $gg};
+  $gb = $ESPEasy_pinMap{uc $gb} if defined $ESPEasy_pinMap{uc $gb};
+
+  my $rr = AttrVal($name,"readingPrefixGPIO","GPIO").$gr;
+  my $rg = AttrVal($name,"readingPrefixGPIO","GPIO").$gg;
+  my $rb = AttrVal($name,"readingPrefixGPIO","GPIO").$gb;
+
+  $r = ReadingsVal($name,$rr,undef);
+  $g = ReadingsVal($name,$rg,undef);
+  $b = ReadingsVal($name,$rb,undef);
+  return ("","","") if !defined $r || !defined $g || !defined $b;
+
+  return (sprintf("%2.2X",$r/4), sprintf("%2.2X",$g/4), sprintf("%2.2X",$b/4));
+}
+
+
+# ------------------------------------------------------------------------------
+sub ESPEasy_adjustSetCmds($)
+{
+  my ($hash) = @_;
+  if (AttrVal($hash->{NAME},"rgbGPIOs",0)) {
+    $ESPEasy_setCmds{rgb}      = 1;
+    $ESPEasy_setCmds{on}       = 0;
+    $ESPEasy_setCmds{off}      = 0;
+    $ESPEasy_setCmds{toggle}   = 0;
+    $ESPEasy_setCmdsUsage{rgb} = "rgb <rrggbb|on|off|toggle>";
+  }
+  else {
+    delete $ESPEasy_setCmds{rgb};
+    delete $ESPEasy_setCmds{on};
+    delete $ESPEasy_setCmds{off};
+    delete $ESPEasy_setCmds{toggle};
+    delete $ESPEasy_setCmdsUsage{rgb};
+  }
+
+  return undef;
+}
+
+
+# ------------------------------------------------------------------------------
+sub ESPEasy_configureForRGB($$$)
+{
+
+}
+
+
+# ------------------------------------------------------------------------------
+# attr <dev> devStateIcon { ESPEasy_devStateIcon($name) }
+sub ESPEasy_devStateIcon($)
+{
+  my $ret = Color::devStateIcon($_[0],"rgb","rgb");
+  $ret =~ m/^.*:on@#(..)(..)(..):toggle$/;
+  return undef if !defined $1;
+  my $symP = int((hex($1)+hex($2)+hex($3))/76.5)*10;
+  $symP = "00" if $symP == 0;
+  my $icon = "light_light_dim_".$symP;
+  $ret =~ s/:on@#/:$icon@#/;
+
+  return $ret;
 }
 
 
@@ -2131,15 +2076,15 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
 
 =pod
 =item device
-=item summary control and access to ESP8266/ESPEasy
-=item summary_DE Steuerung und Zugriff auf ESP8266/ESPEasy
+=item summary Control and access to Espressif ESP8266 WLAN-SoC w/ ESPEasy
+=item summary_DE Steuerung und Zugriff auf Espressif ESP8266 WLAN-SoC mit ESPEasy
 =begin html
 
 <a name="ESPEasy"></a>
 <h3>ESPEasy</h3>
 
 <ul>
-  <p>Provides control to ESP8266/ESPEasy</p>
+  <p>Provides access and control to Espressif ESP8266 WLAN-SoC w/ ESPEasy</p>
 
   Notes:
   <ul>
@@ -2147,16 +2092,18 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       defined.
     </li>
     <li>You have to configure your ESP to use "FHEM HTTP" controller protocol.
-      Furthermore the ESP controller port and the
-      FHEM ESPEasy bridge port must be the same, of cause.
+      Furthermore the ESP controller port and the FHEM ESPEasy bridge port must
+      be the same, of cause.
     </li>
     <br>
   </ul>
 
   Requirements:
   <ul>
-    <li>ESPEasy build >= R128 (self compiled) or an ESPEasy precompiled image >=
-      R140_RC3<br>
+    <li>ESPEasy build &gt;= <a href="https://github.com/ESP8266nu/ESPEasy"
+    target="_new">R128</a> (self compiled) or an ESPEasy precompiled image &gt;=
+  <a href="http://www.letscontrolit.com/wiki/index.php/ESPEasy#Loading_firmware"
+     target="_new">R140_RC3</a><br>
     </li>
     <li>perl module JSON<br>
       Use "cpan install JSON" or operating system's package manager to install
@@ -2230,7 +2177,7 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
   <b>Attributes </b>(bridge)<br><br>
   
   <ul>
-    <li><a name="ESPEasyallowedIPs">allowedIPs</a><br>
+    <li><a name="ESPEasy_allowedIPs">allowedIPs</a><br>
       Used to limit IPs or IP ranges of ESPs which are allowed to commit data.
       <br>
       Specify comma separated list of IPs or IP ranges. Netmask can be written
@@ -2260,7 +2207,7 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Possible values: 0,1<br>
       Default: not set</li><br>
       
-    <li><a name="">combineDevices</a><br>
+    <li><a name="ESPEasy_combineDevices">combineDevices</a><br>
       Used to gather all ESP devices of a single ESP into 1 FHEM device even if
       different ESP devices names are used.<br>
       Possible values: 0, 1, IPv64 address, IPv64/netmask, ESPname or a comma
@@ -2275,9 +2222,9 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
     <li><a name="">deniedIPs</a><br>
       Used to define IPs or IP ranges of ESPs which are denied to commit data.
       <br>
-      Syntax see <a href="#ESPEasyallowedIPs">allowedIPs</a>.<br>
+      Syntax see <a href="#ESPEasy_allowedIPs">allowedIPs</a>.<br>
       This attribute will overwrite any IP or range defined by
-      <a href="#ESPEasyallowedIPs">allowedIPs</a>.<br>
+      <a href="#ESPEasy_allowedIPs">allowedIPs</a>.<br>
       Default: none (no IPs are denied)</li><br>
 
     <li><a name="">disable</a><br>
@@ -2290,15 +2237,11 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Possible values: 4..60<br>
       Default: 10 seconds</li><br>
       
-    <li><a name="ESPEasyuniqIDs">uniqIDs</a><br>
-      <b>This attribute is deprecated and will be removed soon.</b><br>
-      Used to generate unique identifiers (ESPName + DeviceName)<br>
-      If you disable this attribut (set to 0) then your logical devices will be
-      identified (and created) by the device name, only. Can be used to collect
-      values from multiple ESP devices to a single FHEM device. Pay attention
-      that value names must be unique in this case.<br>
-      Possible values: 0,1<br>
-      Default: 1 (enabled)</li><br>
+    <li><a name="ESPEasy_uniqIDs">uniqIDs</a><br>
+      This attribute has been removed.</li><br>
+
+    <li><a href="#readingFnAttributes">readingFnAttributes</a>
+      </li><br>
   </ul>
 
   <h3>ESPEasy Device</h3>
@@ -2340,13 +2283,15 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       
     <li>
       <code>&lt;identifier&gt;</code><br>
-      Specifies an identifier that will bind your ESP to this device.
-      Depending on attribut uniqIDs this must be &lt;esp name&gt; or 
-      &lt;esp name&gt;_&lt;device name&gt;.<br>
+      Specifies an identifier that will bind your ESP to this device.<br>
+      This identifier must be specified in this form: 
+      &lt;esp name&gt;_&lt;esp device name&gt;.<br> If attribute 
+      <a href="#ESPEasy_combineDevices">combineDevices</a> is used then 
+      &lt;esp name&gt; is used, only.<br>
       ESP name and device name can be found here:<br>
       &lt;esp name&gt;: =&gt; ESP GUI =&gt; Config =&gt; Main Settings =&gt;
       Name<br>
-      &lt;device name&gt;: =&gt; ESP GUI =&gt; Devices =&gt; Edit =&gt;
+      &lt;esp device name&gt;: =&gt; ESP GUI =&gt; Devices =&gt; Edit =&gt;
       Task Settings =&gt; Name<br>
       eg. <code>ESPxx_DHT22</code><br>
       eg. <code>ESPxx</code></li><br>
@@ -2356,7 +2301,7 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       </li><br>
   </ul>
 
-  <br><a name="ESPEasyget"></a>
+  <br><a name="ESPEasygetLogical"></a>
   <b>Get </b>(logical device)<br><br>
   
   <ul>
@@ -2368,7 +2313,7 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       <br>
   </ul>
 
-  <br><a name="ESPEasyset"></a>
+  <br><a name="ESPEasysetLogical"></a>
   <b>Set </b>(logical device)<br><br>
   
   <ul>
@@ -2383,18 +2328,57 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
 
     <li><a name="">clearReadings</a><br>
       Delete all readings that are auto created by received sensor values
-      since last FHEM restart<br>
+      since last FHEM restart.<br>
       required values: <code>&lt;none&gt;</code></li><br>
       
     <li><a name="">help</a><br>
-      Shows set command usage<br>
+      Shows set command usage.<br>
       required values: <code>a valid set command</code></li><br>
       
+    <li><a name="">raw</a><br>
+      Can be used for own ESP plugins or new ESPEasy commands that are not
+      considered by this module at the moment. Any argument will be sent
+      directly to the ESP.<br>
+      Usage: raw &lt;cmd&gt; &lt;param1&gt; &lt;param2&gt; &lt;...&gt;<br>
+      eg: raw myCommand 3 1 2</li><br>
+      
+    <li><a name="ESPEasy_set_rgb">rgb</a><br>
+      Used to control a rgb light.<br>
+      You have to set attribute <a href="#ESPEasy_rgbGPIOs">rgbGPIOs</a> to enable this feature. Default
+      colorpicker mode is HSVp but can be adjusted with help of attribute
+      <a href="#ESPEasy_colorpicker">colorpicker</a> to HSV or RGB. Set
+      attribute <a href="#webCmd">webCmd</a> to rgb to display a colorpicker
+      in FHEMWEB room view and on detail page.<br>
+      required argument: <code>&lt;rrggbb&gt;|on|off|toggle</code>
+      <br>
+      eg. rgb 00FF00<br>
+      eg. rgb on<br>
+      eg. rgb off<br>
+      eg. rgb toggle<br>
+      <br>
+      <u>Full featured example:</u><br>
+      attr &lt;ESP&gt; colorpicker HSVp<br>
+      attr &lt;ESP&gt; devStateIcon { ESPEasy_devStateIcon($name) }<br>
+      attr &lt;ESP&gt; Interval 30<br>
+      attr &lt;ESP&gt; parseCmdResponse status,pwm<br>
+      attr &lt;ESP&gt; pollGPIOs D6,D7,D8<br>
+      attr &lt;ESP&gt; rgbGPIOs D6,D7,D8<br>
+      attr &lt;ESP&gt; webCmd rgb:rgb ff0000:rgb 00ff00:rgb 0000ff:toggle:on:off
+      <br>
+      </li><br>
+
     <li><a name="">statusRequest</a><br>
       Trigger a statusRequest for configured GPIOs (see attribut pollGPIOs)
       and do a presence check<br>
       required values: <code>&lt;none&gt;</code></li><br>
-      
+
+    <br>      
+    <b>Note:</b> The following commands are built-in ESPEasy Software commands
+    that are send directly to the ESP after passing a syntax check. A detailed 
+    description can be found here:
+ <a href="http://www.letscontrolit.com/wiki/index.php/ESPEasy_Command_Reference"
+    target="_NEW">ESPEasy Command Reference</a><br><br>
+
     <li><a name="">Event</a><br>
       Create an event. Such events can be used in ESP rules.<br>
       required value: <code>&lt;string&gt;</code></li><br>
@@ -2402,16 +2386,12 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
     <li><a name="">GPIO</a><br>
       Direct control of output pins (on/off)<br>
       required arguments: <code>&lt;pin&gt; &lt;0,1&gt;</code><br>
-      see <a target="_new"
-      href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
-      details</li><br>
+      </li><br>
       
     <li><a name="">PWM</a><br>
       Direct PWM control of output pins<br>
       required arguments: <code>&lt;pin&gt; &lt;level&gt;</code><br>
-      see <a target="_new" 
-      href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a>
-      for details</li><br>
+      </li><br>
       
     <li><a name="">PWMFADE</a><br>
       PWMFADE control of output pins<br>
@@ -2424,94 +2404,61 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Direct pulse control of output pins<br>
       required arguments: <code>&lt;pin&gt; &lt;0,1&gt; &lt;duration&gt;</code>
       <br>
-      see <a target="_new"
-      href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
-      details</li><br>
+      </li><br>
       
     <li><a name="">LongPulse</a><br>
       Direct pulse control of output pins<br>
       required arguments: <code>&lt;pin&gt; &lt;0,1&gt; &lt;duration&gt;</code>
       <br>
-      see <a target="_new"
-      href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
-      details</li><br>
+      </li><br>
 
     <li><a name="">Servo</a><br>
       Direct control of servo motors<br>
       required arguments: <code>&lt;servoNo&gt; &lt;pin&gt; &lt;position&gt;
       </code><br>
-      see <a target="_new" 
-      href="http://www.esp8266.nu/index.php/GPIO">ESPEasy:GPIO</a> for
-      details</li><br>
+      </li><br>
       
     <li><a name="">lcd</a><br>
       Write text messages to LCD screen<br>
       required arguments: <code>&lt;row&gt; &lt;col&gt; &lt;text&gt;</code><br>
-      see 
-      <a target="_new" 
-      href="http://www.esp8266.nu/index.php/LCDDisplay">ESPEasy:LCDDisplay
-      </a> for details</li><br>
+      </li><br>
       
     <li><a name="">lcdcmd</a><br>
       Control LCD screen<br>
       required arguments: <code>&lt;on|off|clear&gt;</code><br>
-      see 
-      <a target="_new" 
-      href="http://www.esp8266.nu/index.php/LCDDisplay">ESPEasy:LCDDisplay
-      </a> for details</li><br>
+      </li><br>
       
     <li><a name="">mcpgpio</a><br>
       Control MCP23017 output pins<br>
       required arguments: <code>&lt;pin&gt; &lt;0,1&gt;</code><br>
-      see <a target="_new" 
-      href="http://www.esp8266.nu/index.php/MCP23017">ESPEasy:MCP23017
-      </a>for details</li><br>
+      </li><br>
       
     <li><a name="">oled</a><br>
       Write text messages to OLED screen<br>
       required arguments: <code>&lt;row&gt; &lt;col&gt; &lt;text&gt;</code><br>
-      see
-      <a target="_new" 
-      href="http://www.esp8266.nu/index.php/OLEDDisplay">ESPEasy:OLEDDisplay
-      </a> for details.</li><br>
+      </li><br>
       
     <li><a name="">oledcmd</a><br>
       Control OLED screen<br>
       required arguments: <code>&lt;on|off|clear&gt;</code><br>
-      see 
-      <a target="_new" 
-      href="http://www.esp8266.nu/index.php/OLEDDisplay">ESPEasy:OLEDDisplay
-      </a> for details.</li><br>
+      </li><br>
       
     <li><a name="">pcapwm</a><br>
       Control PCA9685 pwm pins<br>
       required arguments: <code>&lt;pin&gt; &lt;level&gt;</code><br>
-      see <a target="_new" 
-      href="http://www.esp8266.nu/index.php/PCA9685">ESPEasy:PCA9685</a>
-      for details</li><br>
+      </li><br>
       
     <li><a name="">PCFLongPulse</a><br>
       Long pulse control on PCF8574 output pins<br>
-      see <a target="_new" 
-      href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a>
-      for details</li><br>
+      </li><br>
 
     <li><a name="">PCFPulse</a><br>
       Pulse control on PCF8574 output pins<br>
-      see <a target="_new" 
-      href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a>
-      for details</li><br>
+      </li><br>
       
     <li><a name="">pcfgpio</a><br>
       Control PCF8574 output pins<br>
-      see <a target="_new" 
-      href="http://www.esp8266.nu/index.php/PCF8574">ESPEasy:PCF8574</a>
       </li><br>
-      
-    <li><a name="">raw</a><br>
-      Can be used for own ESP plugins that are not considered at the moment.<br>
-      Usage: raw &lt;cmd&gt; &lt;param1&gt; &lt;param2&gt; &lt;...&gt;<br>
-      eg: raw myCommand 3 1 2</li><br>
       
     <li><a name="">status</a><br>
       Request esp device status (eg. gpio)<br>
@@ -2519,7 +2466,7 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       eg: <code>gpio 13</code></li><br>
   </ul>
 
-  <br><a name="ESPEasyattr"></a>
+  <br><a name="ESPEasyattrLogical"></a>
   <b>Attributes</b> (logical device)<br><br>
 
   <ul>
@@ -2542,27 +2489,32 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Eg. <code>attr ESPxx adjustValue 
       .*:my_OwnFunction($NAME,$READING,$VALUE)</code></li><br>
       
+    <li><a name="ESPEasy_colorpicker">colorpicker</a><br>
+      Used to select colorpicker mode<br>
+      Possible values: RGB,HSV,HSVp<br>
+      Default: HSVp</li><br>
+
     <li><a name="">disable</a><br>
       Used to disable device<br>
       Possible values: 0,1<br>
       Default: 0</li><br>
 
-    <li><a name="ESPEasyInterval">Interval</a><br>
+    <li><a name="ESPEasy_Interval">Interval</a><br>
       Used to set polling interval for presence check and GPIOs polling in
       seconds. 0 will disable this feature.<br>
       Possible values: secs &gt; 10.<br>
       Default: 300</li><br>
-      
+
+    <li><a href="#IODev">IODev</a>
+      </li><br>
+
     <li><a name="">presenceCheck</a><br>
       Used to enable/disable presence check for ESPs<br>
       Presence check determines the presence of a device by readings age. If any
-      reading of a device is newer than <a href="#ESPEasyInterval">interval</a>
+      reading of a device is newer than <a href="#ESPEasy_Interval">interval</a>
       seconds than it is marked as being present. This kind of check works for
       ESP devices in deep sleep too but require at least 1 reading that is
       updated regularly.<br>
-      If the FHEM device contains values from more than 1 ESP (see Attribute
-      <a href="#ESPEasyuniqIDs">uniqIDs</a>) than there is an additional
-      presence state: "partial absent (ip)" besides present and absent.<br>
       Possible values: 0,1<br>
       Default: 1 (enabled)</li><br>
       
@@ -2571,22 +2523,32 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Possible values: 0,1<br>
       Default: 1 (enabled)</li><br>
 
+    <li><a name="ESPEasy_rgbGPIOs">rgbGPIOs</a><br>
+      Use to define GPIOs your lamp is conneted to. Must be set to be able to 
+      use <a href="#ESPEasy_set_rgb">rgb</a> set command.<br>
+      Possible values: Comma separated tripple of ESP pin numbers or arduino pin
+      names<br>
+      Eg: 12,13,15<br>
+      Eg: D6,D7,D8<br>
+      Default: none</li><br>
+
     <li><a name="">setState</a><br>
       Summarize received values in state reading.<br>
-      Set to 0 to disable this feature. A positive number determines the number
-      of characters used for reading names. Only readings with an age less than
-      <a href="#ESPEasyInterval">interval</a> will be considered.<br>
-      Reading state will be updated only if a value has been changed to reduce
-      events.<br>
+      A positive number determines the number of characters used for reading
+      names. Only readings with an age less than 
+      <a href="#ESPEasy_Interval">interval</a> will be considered. If your are
+      not satisfied with format or behavior of setState then disable this
+      attribute (set to 0) and use global attributes userReadings and/or
+      stateFormat to get what you want.<br>
       Possible values: integer &gt;=0<br>
       Default: 3 (enabled with 3 characters abbreviation)</li><br>
 
-      <b>The following 4 attributes should only be use in cases where ESPEasy
+      The following two attributes should only be use in cases where ESPEasy
       software do not send data on status changes and no rule/dummy can be used
-      to do that. Useful for commands like PWM, STATUS, ...</b>
+      to do that. Useful for commands like PWM, STATUS, ...
       <br><br>
     
-    <li><a name="">parseCmdResponse</a><br>
+    <li><a name="ESPEasy_parseCmdResponse">parseCmdResponse</a><br>
       Used to parse response of commands like GPIO, PWM, STATUS, ...<br>
       Specify a module command or comma separated list of commands as argument.
       Commands are case insensitive.<br>
@@ -2596,33 +2558,36 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Default: status<br>
       Eg. <code>attr ESPxx parseCmdResponse status,pwm</code></li><br>
 
-    <li><a name="ESPEasypollGPIOs">pollGPIOs</a><br>
+    <li><a name="ESPEasy_pollGPIOs">pollGPIOs</a><br>
       Used to enable polling for GPIOs status. This polling will do same as
       command 'set ESPxx status &lt;device&gt; &lt;pin&gt;'<br>
       Possible values: GPIO number or comma separated GPIO number list<br>
       Default: none<br>
       Eg. <code>attr ESPxx pollGPIOs 13,D7,D2</code></li><br>
       
-      <b>The following 2 attributes control naming of readings that are
-      generated by help of parseCmdResponse and pollGPIOs (see above)</b>
+      The following two attributes control naming of readings that are
+      generated by help of parseCmdResponse and pollGPIOs (see above)
       <br><br>
 
     <li><a name="">readingPrefixGPIO</a><br>
       Specifies a prefix for readings based on GPIO numbers. For example:
       "set ESPxx pwm 13 512" will switch GPIO13 into pwm mode and set pwm to
       512. If attribute readingPrefixGPIO is set to PIN and attribut
-      parseCmdResponse contains pwm command then the reading name
-      will be PIN13.<br>
+      <a href="#ESPEasy_parseCmdResponse">parseCmdResponse</a> contains pwm
+      command then the reading name will be PIN13.<br>
       Possible Values: <code>string</code><br>
       Default: GPIO</li><br>
       
     <li><a name="">readingSuffixGPIOState</a><br>
       Specifies a suffix for the state-reading of GPIOs (see Attribute
-      <a href="#ESPEasypollGPIOs">pollGPIOs</a>)<br>
+      <a href="#ESPEasy_pollGPIOs">pollGPIOs</a>)<br>
       Possible Values: <code>string</code><br>
       Default: no suffix<br>
       Eg. attr ESPxx readingSuffixGPIOState _state</li><br>
    
+    <li><a href="#readingFnAttributes">readingFnAttributes</a>
+      </li><br>
+
   </ul>
 </ul>
 

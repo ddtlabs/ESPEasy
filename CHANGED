@@ -1,5 +1,7 @@
-Requirements: ESPEasy R128+ (self compiled) or R140_RC3 (image)
-
+0.7.1  - removed attr uniqIDs, check your config !!!
+       - removed internal event-on-change-reading from state and presence
+       - added command: rgb
+       - added attr: rgbGPIOs, colorpicker
 0.6.6  - added space between reading und value in state (Forum #55728.msg515626)
        - attribute uniqIDs is deprecated and will be removed from next release
        - added function declarations (Forum #55728.msg511921)
