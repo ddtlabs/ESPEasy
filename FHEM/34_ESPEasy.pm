@@ -1,4 +1,4 @@
-# $Id: 34_ESPEasy.pm 71 2016-10-02 08:30:00Z dev0 $
+# $Id: 34_ESPEasy.pm 72 2016-10-02 08:30:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 / ESPEasy
@@ -44,7 +44,7 @@ use Color;
 # ------------------------------------------------------------------------------
 my $ESPEasy_minESPEasyBuild = 128;         # informational
 my $ESPEasy_minJsonVersion  = 1.02;        # checked in received data
-my $ESPEasy_version         = 0.71;        # Version of this module
+my $ESPEasy_version         = 0.72;        # Version of this module
 
 my $d_Interval               = 300;        # default interval
 my $d_httpReqTimeout         = 10;         # default timeout http req
@@ -219,8 +219,6 @@ sub ESPEasy_Initialize($)
   $hash->{DeleteFn}   = "ESPEasy_Delete";
   $hash->{RenameFn}   = "ESPEasy_Rename";
   $hash->{NotifyFn}   = "ESPEasy_Notify";
-#  $hash->{FW_summaryFn} = "ESPEasy_SummaryFn";
-
 
   #provider
   $hash->{ReadFn}     = "ESPEasy_Read"; #ESP http request will be parsed here
@@ -1196,7 +1194,7 @@ sub ESPEasy_httpRequest($$$$$$@)
     splice(@params,0,1);
   }
 
-  $params[0] = ",".$params[0] if $params[0];
+  $params[0] = ",".$params[0] if defined $params[0];
   my $plist = join(",",@params);
 
   my $url = "http://".$host.":".$port."/control?cmd=".$cmd.$plist;

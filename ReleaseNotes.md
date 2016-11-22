@@ -120,5 +120,5 @@
 0.7.0  - removed internal event-on-change-reading from setState
 0.7.1  - Command reference update
        - Removed change log from module
-
+0.7.2  - Fixed gpio 0 bug
 ```
