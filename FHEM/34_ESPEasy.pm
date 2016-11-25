@@ -1,4 +1,4 @@
-# $Id: 34_ESPEasy.pm 72 2016-10-02 08:30:00Z dev0 $
+# $Id: 34_ESPEasy.pm 73 1970-01-01 00:00:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 / ESPEasy
@@ -44,7 +44,7 @@ use Color;
 # ------------------------------------------------------------------------------
 my $ESPEasy_minESPEasyBuild = 128;         # informational
 my $ESPEasy_minJsonVersion  = 1.02;        # checked in received data
-my $ESPEasy_version         = 0.72;        # Version of this module
+my $ESPEasy_version         = 0.73;        # Version of this module
 
 my $d_Interval               = 300;        # default interval
 my $d_httpReqTimeout         = 10;         # default timeout http req
@@ -251,7 +251,7 @@ sub ESPEasy_Initialize($)
                        ."readingSwitchText:1,0 "
                        ."setState:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,100 "
                        ."combineDevices "
-                       ."rgbGPIOs: "
+                       ."rgbGPIOs "
                        .$readingFnAttributes;
 }
 
@@ -862,15 +862,6 @@ sub ESPEasy_Attr(@)
     $ret = "ip[/netmask][,ip[/netmask]][,...]" 
       if $cmd eq "set" && !ESPEasy_isIPv64Range($aVal)}
       
-#  elsif ($aName =~ m/^rgbGPIOs$/) {
-#    if ($cmd eq "set" && $aVal !~ m/^[a-zA-Z]{0,2}[0-9]+(,[a-zA-Z]{0,2}[0-9]+)*$/) {
-#      $ret = "GPIO_No[,GPIO_No][...]"
-#    }
-#    else {
-##      ESPEasy_adjustSetCmds($cmd,$aName)
-#    }
-#  }
-
   elsif ($aName =~ m/^pollGPIOs|rgbGPIOs$/) {
     $ret = "GPIO_No[,GPIO_No][...]"
       if $cmd eq "set" && $aVal !~ m/^[a-zA-Z]{0,2}[0-9]+(,[a-zA-Z]{0,2}[0-9]+)*$/}
@@ -1070,22 +1061,36 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
           if ($vType == 10 && AttrVal($name,"readingSwitchText",1) && !AttrVal($name,"rgbGPIOs",0) 
           && $value =~ /^(0|1)$/);
 
-        # attr adjustValue
-        $value = ESPEasy_adjustValue($hash,$reading,$value);
+        # delete ignored reading and helper
+        if (defined ReadingsVal($name,".ignored_$reading",undef)) {
+          delete $hash->{READINGS}{".ignored_$reading"};
+          delete $hash->{helper}{received}{".ignored_$reading"};
+        }
 
-        readingsSingleUpdate($hash, $reading, $value, 1);
-        Log3 $name, 4, "$type $name: $reading: $value";
-
-        # used for presence detection
-        $hash->{helper}{received}{$reading} = time();
-
-        # delete warning if there is any
+        # delete warning if there is any (send from httpRequestParse before)
         if (exists ($hash->{"WARNING"})) {
           if (defined $hash->{"WARNING"}) {
             Log3 $name, 2, "$type $name: RESOLVED: ".$hash->{"WARNING"};
           }
           delete $hash->{"WARNING"};
         }
+
+        # attr adjustValue
+        my $orgVal = $value;
+        $value = ESPEasy_adjustValue($hash,$reading,$value);
+        if (!defined $value) {
+          Log3 $name, 4, "$type $name: $reading: $orgVal [ignored]";
+          $reading = ".ignored_$reading";
+          $value = $orgVal;
+        }
+        
+        readingsSingleUpdate($hash, $reading, $value, 1);
+        my $adj = ($orgVal ne $value) ? " [adjusted]" : "";
+        Log3 $name, 4, "$type $name: $reading: $value".$adj 
+          if defined $value && $reading !~ m/^\./; #no leading dot
+
+        # used for presence detection
+        $hash->{helper}{received}{$reading} = time();
 
         # recalc RGB reading if a PWM channel has changed
         if (AttrVal($name,"rgbGPIOs",0) && $reading =~ /\d$/i) {
@@ -1624,7 +1629,7 @@ sub ESPEasy_setState($)
     my $addTime = 3;
     my @ret;
     foreach my $reading (sort keys %{$hash->{helper}{received}}) {
-      next if $reading =~ /^(state|presence|_lastAction|_lastError|\w+_mode)$/;
+      next if $reading =~ /^(\.ignored_.*|state|presence|_lastAction|_lastError|\w+_mode)$/;
       next if $interval && ReadingsAge($name,$reading,1) > $interval+$addTime;
       push(@ret, substr($reading,0,AttrVal($name,"setState",3))
                 .": ".ReadingsVal($name,$reading,""));
@@ -1738,13 +1743,6 @@ sub ESPEasy_adjustSetCmds($)
 
 
 # ------------------------------------------------------------------------------
-sub ESPEasy_configureForRGB($$$)
-{
-
-}
-
-
-# ------------------------------------------------------------------------------
 # attr <dev> devStateIcon { ESPEasy_devStateIcon($name) }
 sub ESPEasy_devStateIcon($)
 {
@@ -1784,7 +1782,8 @@ sub ESPEasy_adjustValue($$$)
         Log3 $name, 2, "$type $name: $@";
       }
       else {
-        Log3 $name, 4, "$type $name: Adjusted reading $r: $v => $formula = $adjVal";
+        my $rText = (defined $adjVal) ? $adjVal : "'undef'";
+        Log3 $name, 5, "$type $name: Adjusted reading $r: $v => $formula = $rText";
         return $adjVal;
       }
       #last; #disabled to be able to match multiple readings
@@ -2068,7 +2067,6 @@ sub ESPEasy_isHostname($)
 
 # ------------------------------------------------------------------------------
 sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
-
 
 1;
 
@@ -2475,6 +2473,10 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       'round(($VALUE-32)*5/9,2)'.
       If $VALUE is omitted in formula then it will be added to the beginning of
       the formula. So you can simple write 'temp:+20' or '.*:*4'<br>
+      Modified or ignored values are marked in the system log (verbose 4). Use
+      verbose 5 logging to see more details.<br>
+      If the used sub function returns 'undef' then the value will be ignored.
+      <br>
       The following variables can be used if necessary: 
       <ul>
         <li>$VALUE contains the original value</li>
@@ -2485,7 +2487,15 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Eg. <code>attr ESPxx adjustValue humidity:+0.1 
       temperature+*:($VALUE-32)*5/9</code><br>
       Eg. <code>attr ESPxx adjustValue 
-      .*:my_OwnFunction($NAME,$READING,$VALUE)</code></li><br>
+      .*:my_OwnFunction($NAME,$READING,$VALUE)</code><br>
+      <br>
+      Sample function to ignore negative values:<br>
+      <code>
+      sub my_OwnFunction($$$) {<br>
+        &nbsp;&nbsp;my ($name,$reading,$value) = @_;<br>
+        &nbsp;&nbsp;return ($value < 0) ? undef : $value;<br>
+      }<br>
+      </code></li><br>
       
     <li><a name="ESPEasy_colorpicker">colorpicker</a><br>
       Used to select colorpicker mode<br>
@@ -2503,7 +2513,8 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Possible values: secs &gt; 10.<br>
       Default: 300</li><br>
 
-    <li><a href="#IODev">IODev</a>
+    <li><a href="#IODev">IODev</a><br>
+      Used to select I/O device (ESPEasy Bridge).
       </li><br>
 
     <li><a name="">presenceCheck</a><br>

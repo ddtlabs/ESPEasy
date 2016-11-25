@@ -1,3 +1,5 @@
+0.7.3  - Fixed attr rgbGPIOs: empty select menu within FHEMWEB
+       - Ignore received value if adjustValueFn returns undef
 0.7.2  - fixed gpio 0 bug
 0.7.1  - removed attr uniqIDs, check your config !!!
        - removed internal event-on-change-reading from state and presence

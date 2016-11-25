@@ -121,4 +121,6 @@
 0.7.1  - Command reference update
        - Removed change log from module
 0.7.2  - Fixed gpio 0 bug
+0.7.3  - Fixed attr rgbGPIOs: empty select within FHEMWEB
+       - Ignore received value if adjustValueFn returns undef
 ```
