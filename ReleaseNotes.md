@@ -123,4 +123,6 @@
 0.7.2  - Fixed gpio 0 bug
 0.7.3  - Fixed attr rgbGPIOs: empty select within FHEMWEB
        - Ignore received value if adjustValueFn returns undef
+0.7.4  - Added irsend command
+         see: https://forum.fhem.de/index.php/topic,55728.msg530220.html#msg530220
 ```

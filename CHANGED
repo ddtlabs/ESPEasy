@@ -1,3 +1,4 @@
+0.7.4  - Added irsend command
 0.7.3  - Fixed attr rgbGPIOs: empty select menu within FHEMWEB
        - Ignore received value if adjustValueFn returns undef
 0.7.2  - fixed gpio 0 bug
@@ -5,9 +6,4 @@
        - removed internal event-on-change-reading from state and presence
        - added command: rgb
        - added attr: rgbGPIOs, colorpicker
-0.6.6  - added space between reading und value in state (Forum #55728.msg515626)
-       - attribute uniqIDs is deprecated and will be removed from next release
-       - added function declarations (Forum #55728.msg511921)
-       - new attribute combineDevices (Used to gather all ESP devices of a single ESP into 1 FHEM device even if different ESP devices names are used)
-       - Shutdown restart required after update
 

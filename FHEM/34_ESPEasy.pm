@@ -1,4 +1,4 @@
-# $Id: 34_ESPEasy.pm 73 1970-01-01 00:00:00Z dev0 $
+# $Id: 34_ESPEasy.pm 74 1970-01-01 00:00:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 / ESPEasy
@@ -44,10 +44,12 @@ use Color;
 # ------------------------------------------------------------------------------
 my $ESPEasy_minESPEasyBuild = 128;         # informational
 my $ESPEasy_minJsonVersion  = 1.02;        # checked in received data
-my $ESPEasy_version         = 0.73;        # Version of this module
+my $ESPEasy_version         = 0.74;        # Version of this module
 
-my $d_Interval               = 300;        # default interval
-my $d_httpReqTimeout         = 10;         # default timeout http req
+my $d_Interval              = 300;        # default interval
+my $d_httpReqTimeout        = 10;         # default timeout http req
+my $d_ctWW                  = 2000;       # default color temp for ww (kelvin)
+my $d_ctCW                  = 6500;       # default color temp for cw (kelvin)
 
 # ------------------------------------------------------------------------------
 # "setCmds" => "min. number of parameters"
@@ -68,11 +70,12 @@ my %ESPEasy_setCmds = (
   "pcfgpio"        => "2",
   "pcfpulse"       => "3",
   "pcflongpulse"   => "3",
+  "irsend"         => "3",
   "status"         => "2",
   "raw"            => "1",
   "statusrequest"  => "0", 
   "clearreadings"  => "0",
-  "help"           => "1"
+  "help"           => "1",
 );
 
 # ------------------------------------------------------------------------------
@@ -96,6 +99,8 @@ my %ESPEasy_setCmdsUsage = (
   "status"         => "status <device> <pin>",
   #https://forum.fhem.de/index.php/topic,55728.msg480966.html#msg480966
   "pwmfade"        => "pwmfade <pin> <target> <duration>",
+  #https://forum.fhem.de/index.php/topic,55728.msg530220.html#msg530220
+  "irsend"         => "irsend <protocol> <code> <length>",
   "raw"            => "raw <esp_comannd> <...>",
   "statusrequest"  => "statusRequest",
   "clearreadings"  => "clearReadings",
@@ -141,7 +146,6 @@ my %ESPEasy_pinMap = (
   "SD2"  => 9,
   "SD3"  => 10
 );
-
 
 # ------------------------------------------------------------------------------
 #grep ^sub 34_ESPEasy.pm | awk '{print $1" "$2";"}'
@@ -252,6 +256,12 @@ sub ESPEasy_Initialize($)
                        ."setState:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,100 "
                        ."combineDevices "
                        ."rgbGPIOs "
+#                       ."wwcwGPIOs "
+#                       ."wwcwMaxBri:0,1 "
+#                       ."ctWW "
+#                       ."ctWW_reducedRange "
+#                       ."ctCW "
+#                       ."ctCW_reducedRange "
                        .$readingFnAttributes;
 }
 
@@ -436,6 +446,19 @@ sub ESPEasy_Set($$@)
              "parameter(s)\n"."Usage: 'set $name $ESPEasy_setCmdsUsage{$cmd}'";
     }
 
+    # enable ct|pct commands if attr wwcwGPIOs is set
+    if ($cmd =~ /^ct|pct$/i) {
+      if (AttrVal($name,"wwcwGPIOs",0)) {
+        my $ret = ESPEasy_setCT($hash,$cmd,@params);
+        return $ret if ($ret);
+      }
+      else {
+        Log3 $name, 2, "$type $name: Command '$cmd' is deactivated until attribute 'wwcwGPIOs' is set.";
+        return "Command '$cmd' is deactivated until attribute 'wwcwGPIOs' is set.";
+      }
+      return undef;
+    }
+
     # enable rgb commands if attr rgbGPIOs is set
     if ($cmd =~ /^rgb|on|off|toggle$/i) {
       if (AttrVal($name,"rgbGPIOs",0)) {
@@ -455,9 +478,20 @@ sub ESPEasy_Set($$@)
       my $clist = join(" ", @cList);
       my $hlist = join(",", @cList);
       foreach (@cList) {$clist =~ s/ $_/ $_:noArg/ if $ESPEasy_setCmds{$_} == 0}
+      # expand rgb
       my $cp = AttrVal($name,"colorpicker","HSVp");
       $clist =~ s/rgb/rgb:colorpicker,$cp/; # add colorPicker if rgb cmd is available
-      $clist =~ s/help/help:$hlist/;        # add all cmds as params to help cmd
+      # expand ct
+      my $ct = "ct:colorpicker,CT,"
+               .AttrVal($name,"ctWW_reducedRange",AttrVal($name,"ctWW",$d_ctWW))  
+               .",10,"
+               .AttrVal($name,"ctCW_reducedRange",AttrVal($name,"ctCW",$d_ctCW));
+      $clist =~ s/ct /$ct /;
+      # expand pct
+      my $pct = "pct:colorpicker,BRI,0,1,100";
+      $clist =~ s/pct /$pct /;
+      # expand help      
+      $clist =~ s/help/help:$hlist/; 
       Log3 $name, 2, "$type $name: Unknown set command $cmd" if $cmd ne "?";
       return "Unknown argument $cmd, choose one of ". $clist;
     }
@@ -693,7 +727,7 @@ sub ESPEasy_Write($$$$$@) #called from logical's IOWrite (end of SetFn)
     ESPEasy_statusRequest($hash);
     return undef;
   }
-  
+
   ESPEasy_httpRequest($hash, $ip, $port, $ident, $parseCmd, $cmd, @params);
 }
 
@@ -837,7 +871,8 @@ sub ESPEasy_Attr(@)
   if (defined $hash->{SUBTYPE} && $hash->{SUBTYPE} eq "bridge" 
   && ($aName =~ m/(^Interval|pollGPIOs|IODev|setState|readingSwitchText)$/
   ||  $aName =~ m/^(readingPrefixGPIO|readingSuffixGPIOState|adjustValue)$/
-  ||  $aName =~ m/^(presenceCheck|parseCmdResponse|rgbGPIOs|colorpicker)$/)) {
+  ||  $aName =~ m/^(presenceCheck|parseCmdResponse|rgbGPIOs|colorpicker)$/
+  ||  $aName =~ m/^(wwcwGPIOs|ctWW|ctCW)$/)) {
     Log3 $name, 2, "$type $name: Attribut '$aName' can not be used by bridge";
     return "$type: attribut '$aName' cannot be used by bridge device";  
   }
@@ -862,7 +897,7 @@ sub ESPEasy_Attr(@)
     $ret = "ip[/netmask][,ip[/netmask]][,...]" 
       if $cmd eq "set" && !ESPEasy_isIPv64Range($aVal)}
       
-  elsif ($aName =~ m/^pollGPIOs|rgbGPIOs$/) {
+  elsif ($aName =~ m/^pollGPIOs|rgbGPIOs|wwcwGPIOs$/) {
     $ret = "GPIO_No[,GPIO_No][...]"
       if $cmd eq "set" && $aVal !~ m/^[a-zA-Z]{0,2}[0-9]+(,[a-zA-Z]{0,2}[0-9]+)*$/}
 
@@ -870,6 +905,10 @@ sub ESPEasy_Attr(@)
     $ret = "RGB | HSV | HSVp" 
       if ($cmd eq "set" && not $aVal =~ m/^(RGB|HSV|HSVp)$/)}
 
+  elsif ($aName =~ m/^ctWW|ctCW$/) {
+    $ret = "1000..10000"
+      if $cmd eq "set" && ($aVal < 1000 || $aVal > 10000)}
+      
   elsif ($aName eq "parseCmdResponse") {
     my $cmds = lc join("|",keys %ESPEasy_setCmdsUsage);
     $ret = "cmd[,cmd][...]" 
@@ -1693,6 +1732,89 @@ sub ESPEasy_setRGB($$@)
 
 
 # ------------------------------------------------------------------------------
+sub ESPEasy_setCT($$@)
+{
+  my ($hash,$cmd,@p) = @_;
+  my ($type,$name) = ($hash->{TYPE},$hash->{NAME});
+  my ($gww,$gcw) = split(",",AttrVal($name,"wwcwGPIOs",""));
+  my ($ww,$cw);
+  my ($pct,$ct);
+  my $ctWW = AttrVal($name,"ctWW",$d_ctWW);
+  my $ctCW = AttrVal($name,"ctCW",$d_ctCW);
+  my $ctWW_lim = AttrVal($name,"ctWW_reducedRange",undef);
+  my $ctCW_lim = AttrVal($name,"ctCW_reducedRange",undef);
+
+  $gww = $ESPEasy_pinMap{uc $gww} if defined $ESPEasy_pinMap{uc $gww};
+  $gcw = $ESPEasy_pinMap{uc $gcw} if defined $ESPEasy_pinMap{uc $gcw};
+
+  readingsSingleUpdate($hash, $cmd, $p[0], 1);
+  
+  if ($cmd eq "ct") {
+    $ct = $p[0];
+    $pct = ReadingsVal($name,"pct",50);
+  }
+  elsif ($cmd eq "pct") {
+    $pct = $p[0];
+    $ct = ReadingsVal($name,"ct",3000);
+  }
+
+  # are we out of range?
+  $pct = 100 if $pct > 100;
+  $pct = 0 if $pct < 0;
+  $ct = $ctWW if $ct < $ctWW;
+  $ct = $ctCW if $ct > $ctCW;
+
+  #Log 1, "pct:$pct  ct:$ct  ctWW:$ctWW  ctCW:$ctCW  ctWW_lim:$ctWW_lim  ctCW_lim:$ctCW_lim";
+
+  my $wwcwMaxBri = AttrVal($name,"wwcwMaxBri",0);
+  my ($fww,$fcw) = ESPEasy_ct2wwcw($ct, $ctWW, $ctCW, $wwcwMaxBri, $ctWW_lim, $ctCW_lim);
+  #my ($fww,$fcw) = ESPEasy_ct2wwcw($ct, $ctWW, $ctCW);
+
+  ESPEasy_Set($hash, $name, "pwm", ($gww, int $pct*10.23*$fww));
+  ESPEasy_Set($hash, $name, "pwm", ($gcw, int $pct*10.23*$fcw));
+  
+
+  return undef;
+}
+
+
+# ------------------------------------------------------------------------------
+# ct2wwcw with constant brightness over temp range (or max bri if $maxBri == 1).
+# "used range" can be set to reduce temp range to get a lighter leds with constant
+# bri over reduced temp range.
+# 1: temp to set 2:led-ww-temp 3:led-cw-temp 4:maxBri 5:used range ww 6:used range cw
+sub ESPEasy_ct2wwcw($$$;$$$)
+{
+  my ($t,$tww,$tcw,$maxBri,$tww_ur,$tcw_ur) = @_;
+  my $maxBriFactor;
+
+  $tcw -= $tww;
+  $t   -= $tww;
+  my $fcw = $t / $tcw;   
+  my $fww = 1 - $fcw;
+
+  if ($maxBri // $maxBri) {
+    $maxBriFactor = ($fcw > $fww) ? 1/$fcw : 1/$fww;
+    #Log 1, "maxBriFactor: $maxBriFactor (maxBri)";
+  }
+  else {
+    $tww_ur = $tww if !(defined $tww_ur) || $tww_ur < $tww || $tww_ur >= $tcw;
+    $tcw_ur = $tcw if !(defined $tcw_ur) || $tcw_ur > $tcw || $tcw_ur <= $tww;
+
+    $tww_ur -= $tww;
+    $tcw_ur -= $tww;
+    my $t = ($tww_ur < $tcw - $tcw_ur) ? $tww_ur : $tcw - $tcw_ur;
+    my $fcw = $t / $tcw;   
+    my $fww = 1 - $fcw;
+    $maxBriFactor = ($fcw > $fww) ? 1/$fcw : 1/$fww;
+    #Log 1, "maxBriFactor: $maxBriFactor (constBri)";
+  }
+
+  return ( $fww * $maxBriFactor, $fcw * $maxBriFactor );
+}
+
+
+# ------------------------------------------------------------------------------
 sub ESPEasy_gpio2RGB($)
 {
   my ($hash) = @_;
@@ -1730,13 +1852,33 @@ sub ESPEasy_adjustSetCmds($)
     $ESPEasy_setCmds{toggle}   = 0;
     $ESPEasy_setCmdsUsage{rgb} = "rgb <rrggbb|on|off|toggle>";
   }
-  else {
-    delete $ESPEasy_setCmds{rgb};
+  elsif (!AttrVal($hash->{NAME},"rgbGPIOs",0)) {
+#    delete $ESPEasy_setCmds{rgb};
+#    delete $ESPEasy_setCmdsUsage{rgb};
+  }
+
+  if (AttrVal($hash->{NAME},"wwcwGPIOs",0)) {
+    $ESPEasy_setCmds{ct}       = 1;
+    $ESPEasy_setCmds{pct}      = 1;
+    $ESPEasy_setCmds{on}       = 0;
+    $ESPEasy_setCmds{off}      = 0;
+    $ESPEasy_setCmds{toggle}   = 0;
+    $ESPEasy_setCmdsUsage{ct} = "ct <ct>";
+    $ESPEasy_setCmdsUsage{pct} = "pct <pct>";
+  }
+  elsif (!AttrVal($hash->{NAME},"wwcwGPIOs",0)) {
+    delete $ESPEasy_setCmds{ct};
+    delete $ESPEasy_setCmds{pct};
+    delete $ESPEasy_setCmdsUsage{ct};
+    delete $ESPEasy_setCmdsUsage{pct};
+  }
+
+  if (!AttrVal($hash->{NAME},"rgbGPIOs",0) && !AttrVal($hash->{NAME},"wwcwGPIOs",0) ) {
     delete $ESPEasy_setCmds{on};
     delete $ESPEasy_setCmds{off};
     delete $ESPEasy_setCmds{toggle};
-    delete $ESPEasy_setCmdsUsage{rgb};
   }
+
 
   return undef;
 }
@@ -2456,10 +2598,24 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Control PCF8574 output pins<br>
       </li><br>
       
+    <li><a name="">irsend</a><br>
+      Send ir codes via "Infrared Transmit" Plugin<br>
+      Supported protocols are: NEC, JVC, RC5, RC6, SAMSUNG, SONY, PANASONIC at
+      the moment. As long as official documentation is missing you can find
+      some details here: 
+      <a href="http://www.letscontrolit.com/forum/viewtopic.php?f=5&t=328">
+      IR Transmitter thread</a><br>
+      required arguments: <code>&lt;protocol&gt; &lt;hex code&gt; &lt;bit length
+      of hex code&gt;
+      </code><br>
+      eg. <code>irsend NEC 7E81542B 32</code>
+      </li><br>
+      
     <li><a name="">status</a><br>
       Request esp device status (eg. gpio)<br>
       required values: <code>&lt;device&gt; &lt;pin&gt;</code><br>
-      eg: <code>gpio 13</code></li><br>
+      eg: <code>gpio 13</code>
+      </li><br>
   </ul>
 
   <br><a name="ESPEasyattrLogical"></a>
