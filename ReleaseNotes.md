@@ -125,4 +125,20 @@
        - Ignore received value if adjustValueFn returns undef
 0.7.4  - Added irsend command
          see: https://forum.fhem.de/index.php/topic,55728.msg530220.html#msg530220
+0.7.5  - Added a command queue due to not overrun esp's ip stack (limit concurrent sessions)
+       - Added attr maxQueueSize (default 250)
+       - Added attr maxHttpSessions (default 5)
+       - Added attr resendFailedCmd (default enabled)
+       - new bridge commands: get queueSizes, set clearQueue
+       - status command returns "?" in cause of of unknown gpio state
+       - removed useless predefined subs, shutdown restart is required after module update
+0.7.6  - revised some inexact regexps
+0.7.7  - cmd rgb and attribute rgbGPIOs marked as being experimental
+0.7.8  - Queue logging -> verbose 5
+       - Queue error logging -> verbose 2
+       - experimental commands rgb, hsv, ct, ...
+       - changed resendFailedCmd default to be disabled
+       - changed maxHttpSessions default to 3
+
+
 ```

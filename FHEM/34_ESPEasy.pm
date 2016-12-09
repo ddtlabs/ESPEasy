@@ -1,7 +1,7 @@
-# $Id: 34_ESPEasy.pm 74 1970-01-01 00:00:00Z dev0 $
+# $Id: 34_ESPEasy.pm 78 1970-01-01 00:00:00Z dev0 $
 ################################################################################
 #
-#  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 / ESPEasy
+#  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 /w ESPEasy
 #
 #  Copyright 2016 by dev0 
 #  FHEM forum: https://forum.fhem.de/index.php?action=profile;u=7465
@@ -40,16 +40,20 @@ use HttpUtils;
 use Color;
 
 # ------------------------------------------------------------------------------
-# global and default values
+# global/default values
 # ------------------------------------------------------------------------------
-my $ESPEasy_minESPEasyBuild = 128;         # informational
-my $ESPEasy_minJsonVersion  = 1.02;        # checked in received data
-my $ESPEasy_version         = 0.74;        # Version of this module
+my $module_version    = 0.78;       # Version of this module
+my $minEEBuild        = 128;        # informational
+my $minJsonVersion    = 1.02;       # checked in received data
 
-my $d_Interval              = 300;        # default interval
-my $d_httpReqTimeout        = 10;         # default timeout http req
-my $d_ctWW                  = 2000;       # default color temp for ww (kelvin)
-my $d_ctCW                  = 6500;       # default color temp for cw (kelvin)
+my $d_Interval        = 300;        # interval
+my $d_httpReqTimeout  = 10;         # timeout http req
+my $d_ctWW            = 2000;       # color temp for ww (kelvin)
+my $d_ctCW            = 6500;       # color temp for cw (kelvin)
+
+my $d_maxHttpSessions = 3;          # concurrent connects to a single esp
+my $d_maxQueueSize    = 250;        # max queue size,
+my $d_resendFailedCmd = 0;          # resend failed http requests by default?
 
 # ------------------------------------------------------------------------------
 # "setCmds" => "min. number of parameters"
@@ -76,6 +80,18 @@ my %ESPEasy_setCmds = (
   "statusrequest"  => "0", 
   "clearreadings"  => "0",
   "help"           => "1",
+#experimental
+  "rgb"            => "1",
+  "ct"             => "1",
+  "hsv"            => "1",
+  "hue"            => "1",
+  "sat"            => "1",
+  "bri"            => "1",
+  "xy"             => "1",
+  "pct"            => "1",
+  "on"             => "0",
+  "off"            => "0",
+  "toggle"         => "0",
 );
 
 # ------------------------------------------------------------------------------
@@ -105,6 +121,18 @@ my %ESPEasy_setCmdsUsage = (
   "statusrequest"  => "statusRequest",
   "clearreadings"  => "clearReadings",
   "help"           => "help <".join("|", sort keys %ESPEasy_setCmds).">",
+#experimental
+  "rgb"            => "rgb <rrggbb>",
+  "ct"             => "ct <ct>",
+  "hsv"            => "hsv <hue> <sat> <bri>",
+  "hue"            => "hue <hue>",
+  "sat"            => "sat <sat>",
+  "bri"            => "bri <bri>",
+  "xy"             => "xy <xy>",
+  "pct"            => "pct <pct>",
+  "on"             => "on",
+  "off"            => "off",
+  "toggle"         => "toggle"
 );
 
 # ------------------------------------------------------------------------------
@@ -113,6 +141,7 @@ my %ESPEasy_setCmdsUsage = (
 my %ESPEasy_setBridgeCmds = (
   "user"           => "0",
   "pass"           => "0",
+  "clearqueue"     => "0",
   "help"           => "1"
 );
 
@@ -122,6 +151,7 @@ my %ESPEasy_setBridgeCmds = (
 my %ESPEasy_setBridgeCmdsUsage = (
   "user"           => "user <username>",
   "pass"           => "pass <password>",
+  "clearqueue"    => "clearqueue",
   "help"           => "help <".join("|", sort keys %ESPEasy_setBridgeCmds).">"
 );
 
@@ -149,64 +179,6 @@ my %ESPEasy_pinMap = (
 
 # ------------------------------------------------------------------------------
 #grep ^sub 34_ESPEasy.pm | awk '{print $1" "$2";"}'
-sub ESPEasy_Initialize($);
-sub ESPEasy_Define($$);
-sub ESPEasy_Get($@);
-sub ESPEasy_Set($$@);
-sub ESPEasy_Read($);
-sub ESPEasy_Write($$$$$@);
-sub ESPEasy_Notify($$);
-sub ESPEasy_Rename();
-sub ESPEasy_Attr(@);
-sub ESPEasy_Undef($$);
-sub ESPEasy_Shutdown($);
-sub ESPEasy_Delete($$);
-sub ESPEasy_dispatch($$$@);
-sub ESPEasy_dispatchParse($$$);
-sub ESPEasy_autocreate($$$$);
-sub ESPEasy_httpRequest($$$$$$@);
-sub ESPEasy_httpRequestParse($$$);
-sub ESPEasy_statusRequest($);
-sub ESPEasy_pollGPIOs($);
-sub ESPEasy_resetTimer($;$);
-sub ESPEasy_intAt2helper($);
-sub ESPEasy_tcpServerOpen($);
-sub ESPEasy_header2Hash($);
-sub ESPEasy_isAuthenticated($$);
-sub ESPEasy_isParseCmd($$);
-sub ESPEasy_sendHttpClose($$$);
-sub ESPEasy_paramPos($$);
-sub ESPEasy_paramCount($);
-sub ESPEasy_clearReadings($);
-sub ESPEasy_checkVersion($$$$);
-sub ESPEasy_checkPresence($);
-sub ESPEasy_setState($);
-sub ESPEasy_setRGB($$@);
-sub ESPEasy_gpio2RGB($);
-sub ESPEasy_adjustSetCmds($);
-sub ESPEasy_configureForRGB($$$);
-sub ESPEasy_devStateIcon($);
-sub ESPEasy_adjustValue($$$);
-sub ESPEasy_isPmInstalled($$);
-sub ESPEasy_isAttrCombineDevices($);
-sub ESPEasy_isCombineDevices($$$);
-sub ESPEasy_isValidPeer($);
-sub ESPEasy_isIPv64Range($);
-sub ESPEasy_isPeerAllowed($$);
-sub ESPEasy_ip2bin($);
-sub ESPEasy_expandIPv6($);
-sub ESPEasy_addrToCIDR($);
-sub ESPEasy_dottedNmToCIDR($);
-sub ESPEasy_isIPv4($);
-sub ESPEasy_isIPv6($);
-sub ESPEasy_isIPv64($);
-sub ESPEasy_isNmDotted($);
-sub ESPEasy_isNmCIDRv4($);
-sub ESPEasy_isNmCIDRv6($);
-sub ESPEasy_isFqdn($);
-sub ESPEasy_isHostname($);
-sub ESPEasy_whoami();
-
 
 # ------------------------------------------------------------------------------
 sub ESPEasy_Initialize($)
@@ -256,6 +228,9 @@ sub ESPEasy_Initialize($)
                        ."setState:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,100 "
                        ."combineDevices "
                        ."rgbGPIOs "
+                       ."maxQueueSize:10,25,50,100,250,500,1000,2500,5000,10000,25000,50000,100000 "
+                       ."maxHttpSessions:0,1,2,3,4,5,6,7,8,9 "
+                       ."resendFailedCmd:0,1 "
 #                       ."wwcwGPIOs "
 #                       ."wwcwMaxBri:0,1 "
 #                       ."ctWW "
@@ -304,14 +279,14 @@ sub ESPEasy_Define($$)  # only called when defined, not on reload.
   
   $hash->{PORT}      = $port if defined $port;
   $hash->{IDENT}     = $ident if defined $ident;
-  $hash->{VERSION}   = $ESPEasy_version;
+  $hash->{VERSION}   = $module_version;
   $hash->{NOTIFYDEV} = "global";
   
   #--- BRIDGE -------------------------------------------------
   if ($hash->{HOST} eq "bridge") {
     $hash->{SUBTYPE} = "bridge";
     $modules{ESPEasy}{defptr}{BRIDGE} = $hash;
-    Log3 $hash->{NAME}, 2, "$type $name: Opening bridge on port tcp/$port (v$ESPEasy_version)";
+    Log3 $hash->{NAME}, 2, "$type $name: Opening bridge on port tcp/$port (v$module_version)";
     ESPEasy_tcpServerOpen($hash);
     if ($init_done && !defined($hash->{OLDDEF})) {
     #if (not defined getKeyValue($type."_".$name."-firstrun")) {
@@ -326,12 +301,17 @@ sub ESPEasy_Define($$)  # only called when defined, not on reload.
     $hash->{USER} = (defined $u) ? $u : "not defined yet !!!";
     my $p = getKeyValue($type."_".$name."-pass");
     $hash->{PASS} = (defined $p) ? "*" x length($p) : "not defined yet !!!";
+
+    $hash->{MAX_HTTP_SESSIONS} = $d_maxHttpSessions;
+    $hash->{MAX_QUEUE_SIZE}    = $d_maxQueueSize;
+
   } 
 
   #--- DEVICE -------------------------------------------------
   else {
     $hash->{INTERVAL} = $d_Interval;
     $hash->{SUBTYPE} = "device";
+    $modules{$type}{defptr}{$ident} = $hash;
     AssignIoPort($hash,$iodev) if(not defined $hash->{IODev});
     InternalTimer(gettimeofday()+5+rand(5), "ESPEasy_statusRequest", $hash);
     readingsSingleUpdate($hash, 'state', 'opened',1);
@@ -351,7 +331,7 @@ sub ESPEasy_Get($@)
 
   my $reading = $a[1];
   my $ret;
-  if (lc $reading eq "pinmap") {
+  if ($reading =~ m/^pinmap$/i && $hash->{SUBTYPE} eq "device") {
     $ret .= "\nName => GPIO\n";
     $ret .= "------------\n";
     foreach (sort keys %ESPEasy_pinMap) {
@@ -359,9 +339,14 @@ sub ESPEasy_Get($@)
     }
     return $ret;
 
-  } elsif (lc $reading =~ /(user|pass)/) {
-    $ret .= "$reading:\n";
-    $ret .= getKeyValue($hash->{TYPE}."_".$hash->{NAME}."-".$reading);
+  } elsif (lc $reading =~ m/^user|pass$/i && $hash->{SUBTYPE} eq "bridge") {
+    $ret .= getKeyValue($hash->{TYPE}."_".$hash->{NAME}."-".lc $reading);
+    return $ret;
+
+  } elsif (lc $reading =~ m/^queueSize$/i && $hash->{SUBTYPE} eq "bridge") {
+    foreach (keys %{ $hash->{helper}{queue} }) {
+      $ret .= "$_:".scalar @{$hash->{helper}{queue}{"$_"}}." ";
+    }
     return $ret;
 
   } elsif (exists($hash->{READINGS}{$reading})) {
@@ -376,7 +361,7 @@ sub ESPEasy_Get($@)
   }
     
   return ($hash->{SUBTYPE} eq "bridge") 
-    ? $ret . " user:noArg pass:noArg" 
+    ? $ret . " user:noArg pass:noArg queueSize:noArg" 
     : $ret . " pinMap:noArg";
   }
 }
@@ -422,7 +407,13 @@ sub ESPEasy_Set($$@)
       return "Usage: set $name $usage";
     }
 
-    elsif ($cmd =~ /^user|pass$/ ) {
+    elsif ($cmd =~ m/^clearqueue$/i) {
+      delete $hash->{helper}{queue};
+      Log3 $name, 3, "$type $name: Queues erased.";
+      return undef;
+    }
+
+    elsif ($cmd =~ m/^user|pass$/ ) {
       setKeyValue($hash->{TYPE}."_".$hash->{NAME}."-".$cmd,$params[0]);
       # only informational 
       if (defined $params[0]) {
@@ -436,7 +427,8 @@ sub ESPEasy_Set($$@)
 
   # ----- DEVICE ----------------------------------------------
   else {
-    ESPEasy_adjustSetCmds($hash);
+    # cmds are included in hash
+    #ESPEasy_adjustSetCmds($hash);
 
     # are there all required argumets?
     if($ESPEasy_setCmds{$cmd} && scalar @params < $ESPEasy_setCmds{$cmd}) {
@@ -447,29 +439,15 @@ sub ESPEasy_Set($$@)
     }
 
     # enable ct|pct commands if attr wwcwGPIOs is set
-    if ($cmd =~ /^ct|pct$/i) {
-      if (AttrVal($name,"wwcwGPIOs",0)) {
-        my $ret = ESPEasy_setCT($hash,$cmd,@params);
-        return $ret if ($ret);
-      }
-      else {
-        Log3 $name, 2, "$type $name: Command '$cmd' is deactivated until attribute 'wwcwGPIOs' is set.";
-        return "Command '$cmd' is deactivated until attribute 'wwcwGPIOs' is set.";
-      }
-      return undef;
+    if (AttrVal($name,"wwcwGPIOs",0) && $cmd =~ m/^(ct|pct)$/i) {
+      my $ret = ESPEasy_setCT($hash,$cmd,@params);
+      return $ret if ($ret);
     }
 
     # enable rgb commands if attr rgbGPIOs is set
-    if ($cmd =~ /^rgb|on|off|toggle$/i) {
-      if (AttrVal($name,"rgbGPIOs",0)) {
-        my $ret = ESPEasy_setRGB($hash,$cmd,@params);
-        return $ret if ($ret);
-      }
-      else {
-        Log3 $name, 2, "$type $name: Command '$cmd' is deactivated until attribute 'rgbGPIOs' is set.";
-        return "Command '$cmd' is deactivated until attribute 'rgbGPIOs' is set.";
-      }
-      return undef;
+    if (AttrVal($name,"rgbGPIOs",0) && $cmd =~ m/^(rgb|on|off|toggle)$/i) {
+      my $ret = ESPEasy_setRGB($hash,$cmd,@params);
+      return $ret if ($ret);
     }
 
     # handle unknown cmds
@@ -498,7 +476,7 @@ sub ESPEasy_Set($$@)
 
     # pin mapping (eg. D8 -> 15)
     my $pp = ESPEasy_paramPos($cmd,'<pin>');
-    if ($pp && $params[$pp-1] =~ /^[a-zA-Z]/) {
+    if ($pp && $params[$pp-1] =~ m/^[a-zA-Z]/) {
       Log3 $name, 5, "$type $name: Pin mapping ". uc $params[$pp-1] .
                      " => $ESPEasy_pinMap{uc $params[$pp-1]}";
       $params[$pp-1] = $ESPEasy_pinMap{uc $params[$pp-1]};
@@ -506,12 +484,12 @@ sub ESPEasy_Set($$@)
 
     # onOff mapping (on/off -> 1/0)
     $pp = ESPEasy_paramPos($cmd,'<0|1|off|on>');
-    if ($pp && not($params[$pp-1] =~ /^0|1$/)) {
+    if ($pp && not($params[$pp-1] =~ m/^(0|1)$/)) {
       my $state;
-      if ($params[$pp-1] =~ /^off$/i) {
+      if ($params[$pp-1] =~ m/^off$/i) {
         $state = 0;
       }
-      elsif ($params[$pp-1] =~ /^on$/i) {
+      elsif ($params[$pp-1] =~ m/^on$/i) {
         $state = 1;
       }
       else {
@@ -697,10 +675,10 @@ sub ESPEasy_Read($) {
   } #$data[1] =~ m/"module":"ESPEasy"/
 
   else {
-    Log3 $bname, 2, "$btype $name: WARNING: wrong controller configured or "
+    Log3 $bname, 2, "$btype $name: WARNING: Wrong controller configured or "
                    ."ESPEasy Version is too old.";
     Log3 $bname, 2, "$btype $name: WARNING: ESPEasy version R"
-                   .$ESPEasy_minESPEasyBuild." or later required.";
+                   .$minEEBuild." or later required.";
   }
   
   # session will not be close immediately if ESP goes to sleep after http send
@@ -723,12 +701,12 @@ sub ESPEasy_Write($$$$$@) #called from logical's IOWrite (end of SetFn)
     return undef;
   }
 
-  elsif ($cmd =~ "statusrequest") {
+  elsif ($cmd eq "statusrequest") {
     ESPEasy_statusRequest($hash);
     return undef;
   }
 
-  ESPEasy_httpRequest($hash, $ip, $port, $ident, $parseCmd, $cmd, @params);
+  ESPEasy_httpReq($hash, $ip, $port, $ident, $parseCmd, $cmd, @params);
 }
 
 
@@ -869,7 +847,7 @@ sub ESPEasy_Attr(@)
   
   # device attributes
   if (defined $hash->{SUBTYPE} && $hash->{SUBTYPE} eq "bridge" 
-  && ($aName =~ m/(^Interval|pollGPIOs|IODev|setState|readingSwitchText)$/
+  && ($aName =~ m/^(Interval|pollGPIOs|IODev|setState|readingSwitchText)$/
   ||  $aName =~ m/^(readingPrefixGPIO|readingSuffixGPIOState|adjustValue)$/
   ||  $aName =~ m/^(presenceCheck|parseCmdResponse|rgbGPIOs|colorpicker)$/
   ||  $aName =~ m/^(wwcwGPIOs|ctWW|ctCW)$/)) {
@@ -879,14 +857,15 @@ sub ESPEasy_Attr(@)
   # bridge attributes
   elsif (defined $hash->{SUBTYPE} && $hash->{SUBTYPE} eq "device"
   && ($aName =~ m/^(autocreate|autosave|authentication|httpReqTimeout)$/
+  ||  $aName =~ m/^(maxHttpSessions|maxQueueSize|resendFailedCmd)$/
   ||  $aName =~ m/^(allowedIPs|deniedIPs|combineDevices)$/ )) {
     Log3 $name, 2, "$type $name: Attribut '$aName' can be used with "
                   ."bridge device, only";
     return "$type: attribut '$aName' can be used with the bridge device, only";
   }
 
-  elsif ($aName =~ m/^autosave|autocreate|authentication|disable$/
-      || $aName =~ m/^presenceCheck|readingSwitchText$/) {
+  elsif ($aName =~ m/^(autosave|autocreate|authentication|disable)$/
+      || $aName =~ m/^(presenceCheck|readingSwitchText|resendFailedCmd)$/) {
     $ret = "0,1" if ($cmd eq "set" && not $aVal =~ m/^(0|1)$/)}
 
   elsif ($aName eq "combineDevices") {
@@ -897,7 +876,7 @@ sub ESPEasy_Attr(@)
     $ret = "ip[/netmask][,ip[/netmask]][,...]" 
       if $cmd eq "set" && !ESPEasy_isIPv64Range($aVal)}
       
-  elsif ($aName =~ m/^pollGPIOs|rgbGPIOs|wwcwGPIOs$/) {
+  elsif ($aName =~ m/^(pollGPIOs|rgbGPIOs|wwcwGPIOs)$/) {
     $ret = "GPIO_No[,GPIO_No][...]"
       if $cmd eq "set" && $aVal !~ m/^[a-zA-Z]{0,2}[0-9]+(,[a-zA-Z]{0,2}[0-9]+)*$/}
 
@@ -905,7 +884,7 @@ sub ESPEasy_Attr(@)
     $ret = "RGB | HSV | HSVp" 
       if ($cmd eq "set" && not $aVal =~ m/^(RGB|HSV|HSVp)$/)}
 
-  elsif ($aName =~ m/^ctWW|ctCW$/) {
+  elsif ($aName =~ m/^(ctWW|ctCW)$/) {
     $ret = "1000..10000"
       if $cmd eq "set" && ($aVal < 1000 || $aVal > 10000)}
       
@@ -927,8 +906,22 @@ sub ESPEasy_Attr(@)
       if ($cmd eq "set" && $aVal !~ m/^[A-Za-z\d_\.\-\/]+$/)}
 
   elsif ($aName eq "httpReqTimeout") {
-    $ret = "3..60"
+    $ret = "3..60 (default: $d_httpReqTimeout)"
       if $cmd eq "set" && ($aVal < 3 || $aVal > 60)}
+
+  elsif ($aName eq "maxHttpSessions") {
+    ($cmd eq "set" && ($aVal !~ m/^[0-9]+$/))
+    ? $ret = ">= 0 (default: $d_maxHttpSessions, 0: disable queuing)"
+    : $hash->{MAX_HTTP_SESSIONS} = $aVal;
+    if ($cmd eq "del") {$hash->{MAX_HTTP_SESSIONS} = $d_maxHttpSessions}
+  }
+      
+  elsif ($aName eq "maxQueueSize") {
+    ($cmd eq "set" && ($aVal !~ m/^[1-9][0-9]+$/))
+    ? $ret = ">10 (default: $d_maxQueueSize)"
+    : $hash->{MAX_QUEUE_SIZE} = $aVal;
+    if ($cmd eq "del") {$hash->{MAX_QUEUE_SIZE} = $d_maxQueueSize}
+  }
       
   elsif ($aName eq "Interval") {
     ($cmd eq "set" && ($aVal !~ m/^(\d)+$/ || $aVal <10 && $aVal !=0))
@@ -1044,7 +1037,8 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
 
   # 1:ident 2:ip 3:autocreate 4:autosave 5:uniqIDs 6:value(s)
   my ($ident,$ip,$ac,$as,$ui,$v) = split("::",$msg);
-  return undef if !$ident || $ident eq "";
+#  return undef if !$ident || $ident eq "";
+  return "" if !$ident || $ident eq "";
 
   my $name;
   my @v = split("\\|\\|\\|",$v);
@@ -1132,10 +1126,10 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
         $hash->{helper}{received}{$reading} = time();
 
         # recalc RGB reading if a PWM channel has changed
-        if (AttrVal($name,"rgbGPIOs",0) && $reading =~ /\d$/i) {
+        if (AttrVal($name,"rgbGPIOs",0) && $reading =~ m/\d$/i) {
           my ($r,$g,$b) = ESPEasy_gpio2RGB($hash);
-          if (($r ne "" && uc ReadingsVal($name,"rgb","") ne uc $r.$g.$b) 
-          || ReadingsAge($name,"rgb",0) > 5 ) {
+#          if (($r ne "" && uc ReadingsVal($name,"rgb","") ne uc $r.$g.$b) || ReadingsAge($name,"rgb",0) > 5 ) {
+          if (($r ne "" && uc ReadingsVal($name,"rgb","") ne uc $r.$g.$b)  ) {
             readingsSingleUpdate($hash, "rgb", $r.$g.$b, 1);
           }
         }
@@ -1153,6 +1147,7 @@ sub ESPEasy_dispatchParse($$$) # called by logical device (defined by
         if (!defined $hash->{"WARNING"} || $hash->{"WARNING"} ne $value) {
           Log3 $name, 2, "$type $name: WARNING: $value";
           $hash->{"WARNING"} = $value;
+          # CommandTrigger(undef, "$name ....");
         }
         #readingsSingleUpdate($hash, $reading, $value, 1);
       }
@@ -1222,15 +1217,19 @@ sub ESPEasy_autocreate($$$$)
 
 
 # ------------------------------------------------------------------------------
-sub ESPEasy_httpRequest($$$$$$@)
+sub ESPEasy_httpReq($$$$$$@)
 {
   my ($hash, $host, $port, $ident, $parseCmd, $cmd, @params) = @_;
   my ($name,$type,$self) = ($hash->{NAME},$hash->{TYPE},ESPEasy_whoami()."()");
+
+  # command queue (in)
+  return undef if ESPEasy_httpReqQueue(@_);
+
+  # increment http session counter
+  $hash->{helper}{sessions}{$host}++;
+
   my $orgParams = join(",",@params);
   my $orgCmd = $cmd;
-
-#  Log3 $name, 5, "$type $name: httpRequest(ip:$host, port:$port, ident:$ident,"
-#                ." cmd:$cmd, params:$orgParams)";
 
   # raw is used for command not implemented right now
   if ($cmd eq "raw") {
@@ -1244,7 +1243,7 @@ sub ESPEasy_httpRequest($$$$$$@)
   my $url = "http://".$host.":".$port."/control?cmd=".$cmd.$plist;
   
   # there is already a log entry with verbose 3 from device
-  Log3 $name, 4, "$type $name: Send $cmd$plist to $host for ident $ident" if ($cmd !~ /^(status)/);
+  Log3 $name, 4, "$type $name: Send $cmd$plist to $host for ident $ident" if ($cmd !~ m/^(status)/);
 
 
   my $timeout = AttrVal($name,"httpReqTimeout",$d_httpReqTimeout);
@@ -1262,7 +1261,7 @@ sub ESPEasy_httpRequest($$$$$$@)
     port        => $port,      # passthrought to parseFn
     ident       => $ident,     # passthrought to parseFn
     parseCmd    => $parseCmd,  # passthrought to parseFn (attr parseCmdResponse => (0)|1)
-    callback    =>  \&ESPEasy_httpRequestParse
+    callback    =>  \&ESPEasy_httpReqParse
   };
   Log3 $name, 5, "$type $name: NonblockingGet for ident:$ident => $url";
   HttpUtils_NonblockingGet($httpParams);
@@ -1272,28 +1271,54 @@ sub ESPEasy_httpRequest($$$$$$@)
 
 
 # ------------------------------------------------------------------------------
-sub ESPEasy_httpRequestParse($$$)
+sub ESPEasy_httpReqParse($$$)
 {
   my ($param, $err, $data) = @_;
   my $hash = $param->{hash};
   my ($name,$type) = ($hash->{NAME},$hash->{TYPE});
   my @values;
   
+  # command queue
+  $hash->{helper}{sessions}{$param->{host}}--;
+
   if ($err ne "") {
-   #Log3 $name, 2, "$type $name: WARNING for ident:$param->{ident} "
-   #              ."cmd:'$param->{cmd},$param->{plist}' => $err";
+    #dispatch $err to logical device
     @values = ("e||_lastError||$err||0");
+
+    # keep in helper for support reason
+    $hash->{"WARNING_$param->{host}"} = $err;
+
+    # logqueue
+    Log3 $name, 2, "$type $name: httpReq failed:  $param->{host} $param->{ident} "
+                    ."'$param->{cmd} $param->{plist}' ";
+
+    # unshift command back to queue (resend)
+    if (AttrVal($name,"resendFailedCmd",$d_resendFailedCmd) 
+    && $hash->{MAX_HTTP_SESSIONS}) {
+      my @p = ($param->{hash}, $param->{host}, $param->{port}, $param->{ident},
+               $param->{parseCmd}, $param->{cmd}, $param->{plist});
+      unshift @{$hash->{helper}{queue}{$param->{host}}}, \@p;
+      # logqueue
+      Log3 $name, 5, "$type $name: Requeuing: $param->{host} $param->{ident} "
+                    ."'$param->{cmd} $param->{plist}' "
+                    ."(".scalar @{$hash->{helper}{queue}{$param->{host}}}.")";
+    }
+  }
+
+  # check that response from cmd should be parsed (client attr parseCmdResponse)
+  elsif ($data ne "" && !$param->{parseCmd}) {
+    ESPEasy_httpReqDequeue($hash, $param->{host});
+    return undef;
   }
 
   elsif ($data ne "") { # no error occurred
-  
-    # check that response from cmd should be parsed (client attr parseCmdResponse)
-    return undef if (!$param->{parseCmd});
+    # command queue
+    delete $hash->{"WARNING_$param->{host}"};
 
     (my $logData = $data) =~ s/\n//sg;
     Log3 $name, 5, "$type $name: http response for ident:$param->{ident} "
                   ."cmd:'$param->{cmd},$param->{plist}' => '$logData'";
-    if ($data =~ /^{/) { #it could be json...
+    if ($data =~ m/^{/) { #it could be json...
       my $res;
       eval {$res = decode_json($data);1;};
       if ($@) {
@@ -1316,12 +1341,71 @@ sub ESPEasy_httpRequestParse($$$)
 
     else { # no json returned => unknown state
       Log3 $name, 5, "$type $name: No json fmt: ident:$param->{ident} ".
-                     "$param->{cmd}$param->{plist} => $data";
-    return undef;
-    }
+                     "$param->{cmd} $param->{plist} => $data";
+      if ($param->{cmd} eq "status" && $param->{plist} =~ m/^gpio,(\d+)$/i) {
+        # push values/cmds in @values
+        if (defined $1) {
+          push @values, "r||GPIO".$1."_mode||"."?"."||0";
+          push @values, "r||GPIO".$1."_state||".$data."||0";
+        }
+      }
+    } 
   } # ($data ne "") 
   
   ESPEasy_dispatch($hash,$param->{ident},$param->{host},@values);
+  ESPEasy_httpReqDequeue($hash, $param->{host});
+  return undef;
+}
+
+
+# ------------------------------------------------------------------------------
+sub ESPEasy_httpReqQueue(@)
+{
+  my ($hash, $host, $port, $ident, $parseCmd, $cmd, @params) = @_;
+  my ($name,$type) = ($hash->{NAME},$hash->{TYPE});
+
+  $hash->{helper}{sessions}{$host} = 0 if !defined $hash->{helper}{sessions}{$host};
+  # is queueing enabled?
+  if ($hash->{MAX_HTTP_SESSIONS}) {
+    # do queueing if max sessions are already in use
+    if ($hash->{helper}{sessions}{$host} >= $hash->{MAX_HTTP_SESSIONS} ) {
+      # max queue size reached
+      if (!defined $hash->{helper}{queue}{"$host"} 
+      || scalar @{$hash->{helper}{queue}{"$host"}} < $hash->{MAX_QUEUE_SIZE}) {
+        push(@{$hash->{helper}{queue}{"$host"}}, \@_);
+        # logqueue
+        Log3 $name, 5, "$type $name: Queuing:   $host $ident '$cmd ".join(",",@params)."' (". scalar @{$hash->{helper}{queue}{"$host"}} .")";
+        return 1;
+      } 
+      else {
+        # logqueue
+        Log3 $name, 2, "$type $name: set $cmd ".join(",",@params)." (skipped "
+                      ."due to queue size exceeded: $hash->{MAX_QUEUE_SIZE})";
+#          if ($cmd ne "status");
+#        ESPEasy_httpReqDequeue($hash,$host);
+        return 1;
+      }
+    }
+  }
+
+  return 0;
+}
+
+
+# ------------------------------------------------------------------------------
+sub ESPEasy_httpReqDequeue($$)
+{
+  my ($hash,$host) = @_;
+  my ($name,$type) = ($hash->{NAME},$hash->{TYPE});
+
+  if (defined $hash->{helper}{queue}{"$host"} && scalar @{$hash->{helper}{queue}{"$host"}}) {
+    my $p = shift @{$hash->{helper}{queue}{"$host"}};
+    my ($dhash, $dhost, $port, $ident, $parseCmd, $cmd, @params) = @{ $p };
+    # logqueue
+    Log3 $name, 5, "$type $name: Dequeuing: $host $ident '$cmd ".join(",",@params)."' (". scalar @{$hash->{helper}{queue}{"$host"}} .")";
+    ESPEasy_httpReq($dhash, $dhost, $port, $ident, $parseCmd, $cmd, @params);
+  }
+
   return undef;
 }
 
@@ -1357,13 +1441,13 @@ sub ESPEasy_pollGPIOs($) #called by device
     # do nothing, just return
   }
   elsif (defined $sleep && $sleep eq "1") {
-    Log3 $name, 1, "$type $name: Polling of GPIOs is not possible as long as deep sleep mode is active.";
+    Log3 $name, 2, "$type $name: Polling of GPIOs is not possible as long as deep sleep mode is active.";
   }
 
   else {
     my @gpios = split(",",$a);
     foreach my $gpio (@gpios) {
-      if ($gpio =~ /^[a-zA-Z]/) { # pin mapping (eg. D8 -> 15)
+      if ($gpio =~ m/^[a-zA-Z]/) { # pin mapping (eg. D8 -> 15)
         Log3 $name, 5, "$type $name: Pin mapping ".uc $gpio." => $ESPEasy_pinMap{uc $gpio}";
         $gpio = $ESPEasy_pinMap{uc $gpio};
       }
@@ -1563,7 +1647,7 @@ sub ESPEasy_paramPos($$)
 # ------------------------------------------------------------------------------
 sub ESPEasy_paramCount($) 
 { 
-  return () = $_[0] =~ /\s/g  # count \s in a string
+  return () = $_[0] =~ m/\s/g  # count \s in a string
 }
 
 
@@ -1601,11 +1685,11 @@ sub ESPEasy_checkVersion($$$$)
   my ($type,$name) = ($hash->{TYPE},$hash->{NAME});
   my $ov = "_OUTDATED_ESP_VER_$dev";
 
-  if ($vj < $ESPEasy_minJsonVersion) {
+  if ($vj < $minJsonVersion) {
     $hash->{$ov} = "R".$ve."/J".$vj;
     Log3 $name, 2, "$type $name: WARNING: no data processed. ESPEasy plugin "
                   ."'FHEM HTTP' is too old [$dev: R".$ve." J".$vj."]. ".
-                   "Use ESPEasy R$ESPEasy_minESPEasyBuild at least.";
+                   "Use ESPEasy R$minEEBuild at least.";
   return 1;
   } 
   else{
@@ -1668,7 +1752,7 @@ sub ESPEasy_setState($)
     my $addTime = 3;
     my @ret;
     foreach my $reading (sort keys %{$hash->{helper}{received}}) {
-      next if $reading =~ /^(\.ignored_.*|state|presence|_lastAction|_lastError|\w+_mode)$/;
+      next if $reading =~ m/^(\.ignored_.*|state|presence|_lastAction|_lastError|\w+_mode)$/;
       next if $interval && ReadingsAge($name,$reading,1) > $interval+$addTime;
       push(@ret, substr($reading,0,AttrVal($name,"setState",3))
                 .": ".ReadingsVal($name,$reading,""));
@@ -1714,7 +1798,7 @@ sub ESPEasy_setRGB($$@)
     $rgb = ReadingsVal($name,"rgb","000000") ne "000000" ? "000000" : "FFFFFF" 
   }
 
-  if ($rgb =~ m/^([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})/) {
+  if ($rgb =~ m/^([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/) {
     ($r,$g,$b) = (hex($1), hex($2), hex($3));
   }
   else {
@@ -1835,52 +1919,10 @@ sub ESPEasy_gpio2RGB($)
   $r = ReadingsVal($name,$rr,undef);
   $g = ReadingsVal($name,$rg,undef);
   $b = ReadingsVal($name,$rb,undef);
-  return ("","","") if !defined $r || !defined $g || !defined $b;
 
+  return ("","","") if !defined $r || !defined $g || !defined $b
+                    || $r !~ m/^\d+$/ || $g !~ m/^\d+$/i || $b !~ m/^\d+$/i;
   return (sprintf("%2.2X",$r/4), sprintf("%2.2X",$g/4), sprintf("%2.2X",$b/4));
-}
-
-
-# ------------------------------------------------------------------------------
-sub ESPEasy_adjustSetCmds($)
-{
-  my ($hash) = @_;
-  if (AttrVal($hash->{NAME},"rgbGPIOs",0)) {
-    $ESPEasy_setCmds{rgb}      = 1;
-    $ESPEasy_setCmds{on}       = 0;
-    $ESPEasy_setCmds{off}      = 0;
-    $ESPEasy_setCmds{toggle}   = 0;
-    $ESPEasy_setCmdsUsage{rgb} = "rgb <rrggbb|on|off|toggle>";
-  }
-  elsif (!AttrVal($hash->{NAME},"rgbGPIOs",0)) {
-#    delete $ESPEasy_setCmds{rgb};
-#    delete $ESPEasy_setCmdsUsage{rgb};
-  }
-
-  if (AttrVal($hash->{NAME},"wwcwGPIOs",0)) {
-    $ESPEasy_setCmds{ct}       = 1;
-    $ESPEasy_setCmds{pct}      = 1;
-    $ESPEasy_setCmds{on}       = 0;
-    $ESPEasy_setCmds{off}      = 0;
-    $ESPEasy_setCmds{toggle}   = 0;
-    $ESPEasy_setCmdsUsage{ct} = "ct <ct>";
-    $ESPEasy_setCmdsUsage{pct} = "pct <pct>";
-  }
-  elsif (!AttrVal($hash->{NAME},"wwcwGPIOs",0)) {
-    delete $ESPEasy_setCmds{ct};
-    delete $ESPEasy_setCmds{pct};
-    delete $ESPEasy_setCmdsUsage{ct};
-    delete $ESPEasy_setCmdsUsage{pct};
-  }
-
-  if (!AttrVal($hash->{NAME},"rgbGPIOs",0) && !AttrVal($hash->{NAME},"wwcwGPIOs",0) ) {
-    delete $ESPEasy_setCmds{on};
-    delete $ESPEasy_setCmds{off};
-    delete $ESPEasy_setCmds{toggle};
-  }
-
-
-  return undef;
 }
 
 
@@ -1958,7 +2000,7 @@ sub ESPEasy_isAttrCombineDevices($)
   return 0 if !defined $_[0];
   my @ranges = split(/,| /,$_[0]);
   foreach (@ranges) {
-    if (!($_ =~ /^([A-Za-z0-9_\.]|[A-Za-z0-9_\.][A-Za-z0-9_\.]*[A-Za-z0-9\._])$/
+    if (!($_ =~ m/^([A-Za-z0-9_\.]|[A-Za-z0-9_\.][A-Za-z0-9_\.]*[A-Za-z0-9\._])$/
     || ESPEasy_isIPv64Range($_))) 
     {
       return 0 
@@ -2143,7 +2185,7 @@ sub ESPEasy_isIPv4($)
 {
   return 0 if !defined $_[0];
   return 1 if($_[0] 
-    =~ /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/);
+    =~ m/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/);
   return 0;
 }
 
@@ -2152,7 +2194,7 @@ sub ESPEasy_isIPv6($)
 {
   return 0 if !defined $_[0];
   return 1 if ($_[0] 
-    =~ /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/);
+    =~ m/^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/);
   return 0;
 }
 
@@ -2169,7 +2211,7 @@ sub ESPEasy_isNmDotted($)
 {
   return 0 if !defined $_[0];
   return 1 if ($_[0] 
-    =~ /^(255|254|252|248|240|224|192|128|0)\.0\.0\.0|255\.(255|254|252|248|240|224|192|128|0)\.0\.0|255\.255\.(255|254|252|248|240|224|192|128|0)\.0|255\.255\.255\.(255|254|252|248|240|224|192|128|0)$/);
+    =~ m/^(255|254|252|248|240|224|192|128|0)\.0\.0\.0|255\.(255|254|252|248|240|224|192|128|0)\.0\.0|255\.255\.(255|254|252|248|240|224|192|128|0)\.0|255\.255\.255\.(255|254|252|248|240|224|192|128|0)$/);
   return 0;
 }
 
@@ -2177,7 +2219,7 @@ sub ESPEasy_isNmDotted($)
 sub ESPEasy_isNmCIDRv4($)
 {
   return 0 if !defined $_[0];
-  return 1 if ($_[0] =~ /^([0-2]?[0-9]|3[0-2])$/);
+  return 1 if ($_[0] =~ m/^([0-2]?[0-9]|3[0-2])$/);
   return 0;
 }
 
@@ -2185,7 +2227,7 @@ sub ESPEasy_isNmCIDRv4($)
 sub ESPEasy_isNmCIDRv6($)
 {
   return 0 if !defined $_[0];
-  return 1 if ($_[0] =~ /^([0-9]?[0-9]|1([0-1][0-9]|2[0-8]))$/);
+  return 1 if ($_[0] =~ m/^([0-9]?[0-9]|1([0-1][0-9]|2[0-8]))$/);
   return 0;
 }
 
@@ -2194,7 +2236,7 @@ sub ESPEasy_isFqdn($)
 {
   return 0 if !defined $_[0];
   return 1 if ($_[0] 
-    =~ /^(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}$)$/);
+    =~ m/^(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}$)$/);
   return 0;
 }
 
@@ -2202,7 +2244,7 @@ sub ESPEasy_isFqdn($)
 sub ESPEasy_isHostname($)
 {
   return 0 if !defined $_[0];
-  return 1 if ($_[0] =~ /^([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$/) 
+  return 1 if ($_[0] =~ m/^([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$/) 
            && !(ESPEasy_isIPv4($_[0]) || ESPEasy_isIPv6($_[0]));
   return 0;
 }
@@ -2279,10 +2321,15 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
   <b>Get </b>(bridge)<br><br>
   
   <ul>
-    <li>&lt;reading&gt;<br>
+    <li><a name="">&lt;reading&gt;</a><br>
       returns the value of the specified reading</li>
       <br>
       
+    <li><a name="">queueSize</a><br>
+      returns number of entries for each queue (<ip>:number [<ip>:number] 
+      [...]).
+      </li><br>
+
     <li><a name="">user</a><br>
       returns username used by basic authentication for incoming requests.
       </li><br>
@@ -2300,6 +2347,11 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Shows set command usage<br>
       required values: <code>help|pass|user</code></li><br>
       
+    <li><a name="">clearQueue</a><br>
+      Used to erase command queues.<br>
+      required value: <code>&lt;none&gt;</code><br>
+      eg. : <code>set ESPBridge clearQueue</code></li><br>
+
     <li><a name="">pass</a><br>
       Specifies password used by basic authentication for incoming requests.<br>
       required value: <code>&lt;password&gt;</code><br>
@@ -2329,19 +2381,19 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       </li><br>
 
     <li><a name="">authentication</a><br>
-      Used to enable basic authentication for incoming requests<br>
+      Used to enable basic authentication for incoming requests.<br>
       Note that user, pass and authentication attribute must be set to activate
       basic authentication<br>
       Possible values: 0,1<br>
       Default: 0</li><br>
 
     <li><a name="">autocreate</a><br>
-      Used to overwrite global autocreate setting<br>
+      Used to overwrite global autocreate setting.<br>
       Possible values: 0,1<br>
       Default: not set</li><br>
       
     <li><a name="">autosave</a><br>
-      Used to overwrite global autosave setting<br>
+      Used to overwrite global autosave setting.<br>
       Possible values: 0,1<br>
       Default: not set</li><br>
       
@@ -2366,14 +2418,35 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Default: none (no IPs are denied)</li><br>
 
     <li><a name="">disable</a><br>
-      Used to disable device<br>
+      Used to disable device.<br>
       Possible values: 0,1<br>
       Default: 0 (eanble)</li><br>
       
     <li><a name="">httpReqTimeout</a><br>
-      Specifies seconds to wait for a http answer from ESP8266 device<br>
+      Specifies seconds to wait for a http answer from ESP8266 device.<br>
       Possible values: 4..60<br>
       Default: 10 seconds</li><br>
+      
+    <li><a name="">maxHttpSessions</a><br>
+      Limit maximal concurrent outgoing http sessions to a single ESP.<br>
+      Set to 0 to disable this feature. At the moment (ESPEasy R147) it seems
+      to be possible to send 5 "concurrent" requests if nothing else keeps the
+      esp working.<br>
+      Possible values: 0..9<br>
+      Default: 3</li><br>
+      
+    <li><a name="">maxQueueSize</a><br>
+      Limit maximal queue size (number of commands in queue) for outgoing http
+      requests.<br>
+      If command queue size is reached (eg. ESP is offline) any further
+      command will be ignored and discard.<br>
+      Possible values: >10<br>
+      Default: 250</li><br>
+      
+    <li><a name="">resendFailedCmd</a><br>
+      Used to resend commands when http request returned an error<br>
+      Possible values: 0,1<br>
+      Default: 0 (disabled)</li><br>
       
     <li><a name="ESPEasy_uniqIDs">uniqIDs</a><br>
       This attribute has been removed.</li><br>
@@ -2443,7 +2516,7 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
   <b>Get </b>(logical device)<br><br>
   
   <ul>
-    <li>&lt;reading&gt;<br>
+    <li><a name="">&lt;reading&gt;</a><br>
       returns the value of the specified reading</li><br>
       
     <li><a name="">pinMap</a><br>
@@ -2480,31 +2553,6 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Usage: raw &lt;cmd&gt; &lt;param1&gt; &lt;param2&gt; &lt;...&gt;<br>
       eg: raw myCommand 3 1 2</li><br>
       
-    <li><a name="ESPEasy_set_rgb">rgb</a><br>
-      Used to control a rgb light.<br>
-      You have to set attribute <a href="#ESPEasy_rgbGPIOs">rgbGPIOs</a> to enable this feature. Default
-      colorpicker mode is HSVp but can be adjusted with help of attribute
-      <a href="#ESPEasy_colorpicker">colorpicker</a> to HSV or RGB. Set
-      attribute <a href="#webCmd">webCmd</a> to rgb to display a colorpicker
-      in FHEMWEB room view and on detail page.<br>
-      required argument: <code>&lt;rrggbb&gt;|on|off|toggle</code>
-      <br>
-      eg. rgb 00FF00<br>
-      eg. rgb on<br>
-      eg. rgb off<br>
-      eg. rgb toggle<br>
-      <br>
-      <u>Full featured example:</u><br>
-      attr &lt;ESP&gt; colorpicker HSVp<br>
-      attr &lt;ESP&gt; devStateIcon { ESPEasy_devStateIcon($name) }<br>
-      attr &lt;ESP&gt; Interval 30<br>
-      attr &lt;ESP&gt; parseCmdResponse status,pwm<br>
-      attr &lt;ESP&gt; pollGPIOs D6,D7,D8<br>
-      attr &lt;ESP&gt; rgbGPIOs D6,D7,D8<br>
-      attr &lt;ESP&gt; webCmd rgb:rgb ff0000:rgb 00ff00:rgb 0000ff:toggle:on:off
-      <br>
-      </li><br>
-
     <li><a name="">statusRequest</a><br>
       Trigger a statusRequest for configured GPIOs (see attribut pollGPIOs)
       and do a presence check<br>
@@ -2616,6 +2664,37 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       required values: <code>&lt;device&gt; &lt;pin&gt;</code><br>
       eg: <code>gpio 13</code>
       </li><br>
+      
+    <b>Experimental</b> (The following commands can be changed or removed at
+       any time):<br><br>
+
+    <li><a name="ESPEasy_set_rgb">rgb</a><br>
+      EXPERIMENTAL, may be removed in later version if a usable rgb plugin is
+      available.<br>
+      Used to control a rgb light.<br>
+      You have to set attribute <a href="#ESPEasy_rgbGPIOs">rgbGPIOs</a> to enable this feature. Default
+      colorpicker mode is HSVp but can be adjusted with help of attribute
+      <a href="#ESPEasy_colorpicker">colorpicker</a> to HSV or RGB. Set
+      attribute <a href="#webCmd">webCmd</a> to rgb to display a colorpicker
+      in FHEMWEB room view and on detail page.<br>
+      required argument: <code>&lt;rrggbb&gt;|on|off|toggle</code>
+      <br>
+      eg. rgb 00FF00<br>
+      eg. rgb on<br>
+      eg. rgb off<br>
+      eg. rgb toggle<br>
+      <br>
+      <u>Full featured example:</u><br>
+      attr &lt;ESP&gt; colorpicker HSVp<br>
+      attr &lt;ESP&gt; devStateIcon { ESPEasy_devStateIcon($name) }<br>
+      attr &lt;ESP&gt; Interval 30<br>
+      attr &lt;ESP&gt; parseCmdResponse status,pwm<br>
+      attr &lt;ESP&gt; pollGPIOs D6,D7,D8<br>
+      attr &lt;ESP&gt; rgbGPIOs D6,D7,D8<br>
+      attr &lt;ESP&gt; webCmd rgb:rgb ff0000:rgb 00ff00:rgb 0000ff:toggle:on:off
+      <br>
+      </li><br>
+      
   </ul>
 
   <br><a name="ESPEasyattrLogical"></a>
@@ -2688,15 +2767,6 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Possible values: 0,1<br>
       Default: 1 (enabled)</li><br>
 
-    <li><a name="ESPEasy_rgbGPIOs">rgbGPIOs</a><br>
-      Use to define GPIOs your lamp is conneted to. Must be set to be able to 
-      use <a href="#ESPEasy_set_rgb">rgb</a> set command.<br>
-      Possible values: Comma separated tripple of ESP pin numbers or arduino pin
-      names<br>
-      Eg: 12,13,15<br>
-      Eg: D6,D7,D8<br>
-      Default: none</li><br>
-
     <li><a name="">setState</a><br>
       Summarize received values in state reading.<br>
       A positive number determines the number of characters used for reading
@@ -2752,6 +2822,18 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
    
     <li><a href="#readingFnAttributes">readingFnAttributes</a>
       </li><br>
+    
+    <b>Experimental</b> (The following attributes can be changed or removed at
+       any time):<br><br>
+
+    <li><a name="ESPEasy_rgbGPIOs">rgbGPIOs</a><br>
+      Use to define GPIOs your lamp is conneted to. Must be set to be able to 
+      use <a href="#ESPEasy_set_rgb">rgb</a> set command.<br>
+      Possible values: Comma separated tripple of ESP pin numbers or arduino pin
+      names<br>
+      Eg: 12,13,15<br>
+      Eg: D6,D7,D8<br>
+      Default: none</li><br>
 
   </ul>
 </ul>

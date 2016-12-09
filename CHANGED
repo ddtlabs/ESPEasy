@@ -1,3 +1,13 @@
+!!! FHEM shutdown restart required !!!
+
+0.7.8  - revised some inexact regexps
+       - Added a command queue due to not overrun esp's ip stack
+       - Added attr maxQueueSize (default 250)
+       - Added attr maxHttpSessions (default 3)
+       - Added attr resendFailedCmd (default disabled)
+       - new bridge commands: get queueSizes, set clearQueue
+       - status command returns "?" in case of an unknown gpio state
+       - removed useless predefined subs, shutdown restart is required after module update
 0.7.4  - Added irsend command
 0.7.3  - Fixed attr rgbGPIOs: empty select menu within FHEMWEB
        - Ignore received value if adjustValueFn returns undef
