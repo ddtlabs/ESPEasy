@@ -1,4 +1,4 @@
-# $Id: 34_ESPEasy.pm 78 1970-01-01 00:00:00Z dev0 $
+# $Id: 34_ESPEasy.pm 80 1970-01-01 00:00:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 /w ESPEasy
@@ -42,14 +42,14 @@ use Color;
 # ------------------------------------------------------------------------------
 # global/default values
 # ------------------------------------------------------------------------------
-my $module_version    = 0.78;       # Version of this module
+my $module_version    = 0.80;       # Version of this module
 my $minEEBuild        = 128;        # informational
 my $minJsonVersion    = 1.02;       # checked in received data
 
 my $d_Interval        = 300;        # interval
 my $d_httpReqTimeout  = 10;         # timeout http req
-my $d_ctWW            = 2000;       # color temp for ww (kelvin)
-my $d_ctCW            = 6500;       # color temp for cw (kelvin)
+my $d_colorpickerCTww = 2000;       # color temp for ww (kelvin)
+my $d_colorpickerCTcw = 6000;       # color temp for cw (kelvin)
 
 my $d_maxHttpSessions = 3;          # concurrent connects to a single esp
 my $d_maxQueueSize    = 250;        # max queue size,
@@ -80,18 +80,20 @@ my %ESPEasy_setCmds = (
   "statusrequest"  => "0", 
   "clearreadings"  => "0",
   "help"           => "1",
+  "lights"         => "1",
 #experimental
-  "rgb"            => "1",
-  "ct"             => "1",
-  "hsv"            => "1",
-  "hue"            => "1",
-  "sat"            => "1",
-  "bri"            => "1",
-  "xy"             => "1",
-  "pct"            => "1",
-  "on"             => "0",
-  "off"            => "0",
-  "toggle"         => "0",
+#  "rgb"            => "1",
+#  "pct"            => "1",
+#  "ct"             => "1",
+#  "on"             => "0",
+#  "off"            => "0",
+#  "toggle"         => "0",
+
+#  "hsv"            => "1",
+#  "hue"            => "1",
+#  "sat"            => "1",
+#  "bri"            => "1",
+#  "xy"             => "1",
 );
 
 # ------------------------------------------------------------------------------
@@ -122,17 +124,19 @@ my %ESPEasy_setCmdsUsage = (
   "clearreadings"  => "clearReadings",
   "help"           => "help <".join("|", sort keys %ESPEasy_setCmds).">",
 #experimental
+  "lights"          => "light <rgb|ct|pct|on|off|toggle> [color] [fading time] [pct]",
   "rgb"            => "rgb <rrggbb>",
-  "ct"             => "ct <ct>",
-  "hsv"            => "hsv <hue> <sat> <bri>",
-  "hue"            => "hue <hue>",
-  "sat"            => "sat <sat>",
-  "bri"            => "bri <bri>",
-  "xy"             => "xy <xy>",
   "pct"            => "pct <pct>",
+  "ct"             => "ct <ct>",
   "on"             => "on",
   "off"            => "off",
   "toggle"         => "toggle"
+
+#  "hsv"            => "hsv <hue> <sat> <bri>",
+#  "hue"            => "hue <hue>",
+#  "sat"            => "sat <sat>",
+#  "bri"            => "bri <bri>",
+#  "xy"             => "xy <xy>",
 );
 
 # ------------------------------------------------------------------------------
@@ -231,11 +235,12 @@ sub ESPEasy_Initialize($)
                        ."maxQueueSize:10,25,50,100,250,500,1000,2500,5000,10000,25000,50000,100000 "
                        ."maxHttpSessions:0,1,2,3,4,5,6,7,8,9 "
                        ."resendFailedCmd:0,1 "
+                       ."mapLightCmds "
+                       ."colorpickerCTww "
+                       ."colorpickerCTcw "
 #                       ."wwcwGPIOs "
 #                       ."wwcwMaxBri:0,1 "
-#                       ."ctWW "
 #                       ."ctWW_reducedRange "
-#                       ."ctCW "
 #                       ."ctCW_reducedRange "
                        .$readingFnAttributes;
 }
@@ -428,7 +433,7 @@ sub ESPEasy_Set($$@)
   # ----- DEVICE ----------------------------------------------
   else {
     # cmds are included in hash
-    #ESPEasy_adjustSetCmds($hash);
+    ESPEasy_adjustSetCmds($hash);
 
     # are there all required argumets?
     if($ESPEasy_setCmds{$cmd} && scalar @params < $ESPEasy_setCmds{$cmd}) {
@@ -438,17 +443,25 @@ sub ESPEasy_Set($$@)
              "parameter(s)\n"."Usage: 'set $name $ESPEasy_setCmdsUsage{$cmd}'";
     }
 
-    # enable ct|pct commands if attr wwcwGPIOs is set
-    if (AttrVal($name,"wwcwGPIOs",0) && $cmd =~ m/^(ct|pct)$/i) {
-      my $ret = ESPEasy_setCT($hash,$cmd,@params);
-      return $ret if ($ret);
-    }
 
-    # enable rgb commands if attr rgbGPIOs is set
-    if (AttrVal($name,"rgbGPIOs",0) && $cmd =~ m/^(rgb|on|off|toggle)$/i) {
-      my $ret = ESPEasy_setRGB($hash,$cmd,@params);
-      return $ret if ($ret);
+    #Lights Plugin
+    if (defined AttrVal($name,"mapLightCmds",undef) && $cmd =~ m/^(ct|pct|rgb|on|off|toggle)$/i) {
+      unshift @params, $cmd;
+      $cmd = lc AttrVal($name,"mapLightCmds","");
+#      Log 1, "cmd: $cmd params: ".join(",",@params);
     }
+    else {
+      # enable ct|pct commands if attr wwcwGPIOs is set
+      if (AttrVal($name,"wwcwGPIOs",0) && $cmd =~ m/^(ct|pct)$/i) {
+        my $ret = ESPEasy_setCT($hash,$cmd,@params);
+        return $ret if ($ret);
+      }
+      # enable rgb commands if attr rgbGPIOs is set
+      if (AttrVal($name,"rgbGPIOs",0) && $cmd =~ m/^(rgb|on|off|toggle)$/i) {
+        my $ret = ESPEasy_setRGB($hash,$cmd,@params);
+        return $ret if ($ret);
+      }
+    } #else
 
     # handle unknown cmds
     if (!exists $ESPEasy_setCmds{$cmd}) {
@@ -461,9 +474,9 @@ sub ESPEasy_Set($$@)
       $clist =~ s/rgb/rgb:colorpicker,$cp/; # add colorPicker if rgb cmd is available
       # expand ct
       my $ct = "ct:colorpicker,CT,"
-               .AttrVal($name,"ctWW_reducedRange",AttrVal($name,"ctWW",$d_ctWW))  
+               .AttrVal($name,"ctWW_reducedRange",AttrVal($name,"colorpickerCTww",$d_colorpickerCTww))  
                .",10,"
-               .AttrVal($name,"ctCW_reducedRange",AttrVal($name,"ctCW",$d_ctCW));
+               .AttrVal($name,"ctCW_reducedRange",AttrVal($name,"colorpickerCTcw",$d_colorpickerCTcw));
       $clist =~ s/ct /$ct /;
       # expand pct
       my $pct = "pct:colorpicker,BRI,0,1,100";
@@ -850,7 +863,7 @@ sub ESPEasy_Attr(@)
   && ($aName =~ m/^(Interval|pollGPIOs|IODev|setState|readingSwitchText)$/
   ||  $aName =~ m/^(readingPrefixGPIO|readingSuffixGPIOState|adjustValue)$/
   ||  $aName =~ m/^(presenceCheck|parseCmdResponse|rgbGPIOs|colorpicker)$/
-  ||  $aName =~ m/^(wwcwGPIOs|ctWW|ctCW)$/)) {
+  ||  $aName =~ m/^(wwcwGPIOs|colorpickerCTww|colorpickerCTcw|mapLightCmds)$/)) {
     Log3 $name, 2, "$type $name: Attribut '$aName' can not be used by bridge";
     return "$type: attribut '$aName' cannot be used by bridge device";  
   }
@@ -884,13 +897,18 @@ sub ESPEasy_Attr(@)
     $ret = "RGB | HSV | HSVp" 
       if ($cmd eq "set" && not $aVal =~ m/^(RGB|HSV|HSVp)$/)}
 
-  elsif ($aName =~ m/^(ctWW|ctCW)$/) {
+  elsif ($aName =~ m/^(colorpickerCTww|colorpickerCTcw)$/) {
     $ret = "1000..10000"
       if $cmd eq "set" && ($aVal < 1000 || $aVal > 10000)}
       
   elsif ($aName eq "parseCmdResponse") {
     my $cmds = lc join("|",keys %ESPEasy_setCmdsUsage);
     $ret = "cmd[,cmd][...]" 
+      if $cmd eq "set" && lc($aVal) !~ m/^($cmds){1}(,($cmds))*$/}
+
+  elsif ($aName eq "mapLightCmds") {
+    my $cmds = lc join("|",keys %ESPEasy_setCmdsUsage);
+    $ret = "ESPEasy cmd" 
       if $cmd eq "set" && lc($aVal) !~ m/^($cmds){1}(,($cmds))*$/}
 
   elsif ($aName eq "setState") {
@@ -1332,11 +1350,20 @@ sub ESPEasy_httpReqParse($$$)
       # maps plugin type (answer for set state/gpio) to SENSOR_TYPE_SWITCH
       # 10 = SENSOR_TYPE_SWITCH
       my $vType = (defined $res->{plugin} && $res->{plugin} eq "1") ? "10" : "0";
-
-      # push values/cmds in @values
-      push @values, "r||GPIO".$res->{pin}."_mode||".$res->{mode}."||".$vType;
-      push @values, "r||GPIO".$res->{pin}."_state||".$res->{state}."||".$vType;
-      push @values, "r||_lastAction"."||".$res->{log}."||".$vType if $res->{log} ne "";
+      if (defined $res->{plugin} && $res->{plugin} eq "123") {
+        # Lights plugin
+#        Log 1, Dumper $res;
+        foreach (keys %{ $res }) {
+          push @values, "r||$_||".$res->{$_}."||".$vType
+            if $res->{$_} ne "" && $_ ne "plugin";
+        }
+      }
+      else {
+        # push values/cmds in @values
+        push @values, "r||GPIO".$res->{pin}."_mode||".$res->{mode}."||".$vType;
+        push @values, "r||GPIO".$res->{pin}."_state||".$res->{state}."||".$vType;
+        push @values, "r||_lastAction"."||".$res->{log}."||".$vType if $res->{log} ne "";
+      }
     } #it is json...
 
     else { # no json returned => unknown state
@@ -1823,8 +1850,8 @@ sub ESPEasy_setCT($$@)
   my ($gww,$gcw) = split(",",AttrVal($name,"wwcwGPIOs",""));
   my ($ww,$cw);
   my ($pct,$ct);
-  my $ctWW = AttrVal($name,"ctWW",$d_ctWW);
-  my $ctCW = AttrVal($name,"ctCW",$d_ctCW);
+  my $ctWW = AttrVal($name,"colorpickerCTww",$d_colorpickerCTww);
+  my $ctCW = AttrVal($name,"colorpickerCTcw",$d_colorpickerCTcw);
   my $ctWW_lim = AttrVal($name,"ctWW_reducedRange",undef);
   my $ctCW_lim = AttrVal($name,"ctCW_reducedRange",undef);
 
@@ -1923,6 +1950,45 @@ sub ESPEasy_gpio2RGB($)
   return ("","","") if !defined $r || !defined $g || !defined $b
                     || $r !~ m/^\d+$/ || $g !~ m/^\d+$/i || $b !~ m/^\d+$/i;
   return (sprintf("%2.2X",$r/4), sprintf("%2.2X",$g/4), sprintf("%2.2X",$b/4));
+}
+
+
+# ------------------------------------------------------------------------------
+sub ESPEasy_adjustSetCmds($)
+{
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+
+  delete $ESPEasy_setCmds{rgb};
+  delete $ESPEasy_setCmds{ct};
+  delete $ESPEasy_setCmds{pct};
+  delete $ESPEasy_setCmds{on};
+  delete $ESPEasy_setCmds{off};
+  delete $ESPEasy_setCmds{toggle};
+
+  if (defined AttrVal($name,"mapLightCmds",undef)) {
+    $ESPEasy_setCmds{rgb}      = 1;
+    $ESPEasy_setCmds{ct}       = 1;
+    $ESPEasy_setCmds{pct}      = 1;
+    $ESPEasy_setCmds{on}       = 0;
+    $ESPEasy_setCmds{off}      = 0;
+    $ESPEasy_setCmds{toggle}   = 0;
+  }
+  if (defined AttrVal($name,"rgbGPIOs",undef)) {
+    $ESPEasy_setCmds{rgb}      = 1;
+    $ESPEasy_setCmds{on}       = 0;
+    $ESPEasy_setCmds{off}      = 0;
+    $ESPEasy_setCmds{toggle}   = 0;
+  }
+  if (defined AttrVal($name,"wwcwGPIOs",undef)) {
+    $ESPEasy_setCmds{ct}       = 1;
+    $ESPEasy_setCmds{pct}      = 1;
+    $ESPEasy_setCmds{on}       = 0;
+    $ESPEasy_setCmds{off}      = 0;
+    $ESPEasy_setCmds{toggle}   = 0;
+  }
+
+  return undef;
 }
 
 
@@ -2545,7 +2611,7 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
     <li><a name="">help</a><br>
       Shows set command usage.<br>
       required values: <code>a valid set command</code></li><br>
-      
+
     <li><a name="">raw</a><br>
       Can be used for own ESP plugins or new ESPEasy commands that are not
       considered by this module at the moment. Any argument will be sent
@@ -2586,6 +2652,22 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       pin: 0-3 (0=r,1=g,2=b,3=w), target: 0-1023, duration: 1-30 seconds.
       </li><br>
 
+    <li><a name="">Lights</a> (plugin can be found <a
+      href="https://github.com/ddtlabs/ESPEasy-Plugin-Lights">here</a>)<br>
+      Control a rgb or ct light<br>
+      required arguments: <code>&lt;cmd&gt; &lt;color&gt; &lt;fading time&gt;
+      </code><br>
+      cmd: rgb, ct, pct, on, off, toggle<br>
+      color: rrggbb (if rgb) or color temperature in Kelvin (if ct)<br>
+      fading time: time in seconds<br>
+      eg. <code>set &lt;esp&gt; rgb aa00aa</code><br>
+      eg. <code>set &lt;esp&gt; ct 3200</code><br>
+      eg. <code>set &lt;esp&gt; pct 50</code><br>
+      eg. <code>set &lt;esp&gt; on</code><br>
+      eg. <code>set &lt;esp&gt; off</code><br>
+      eg. <code>set &lt;esp&gt; toggle</code><br>
+      </li><br>
+      
     <li><a name="">Pulse</a><br>
       Direct pulse control of output pins<br>
       required arguments: <code>&lt;pin&gt; &lt;0,1&gt; &lt;duration&gt;</code>
@@ -2669,7 +2751,7 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
        any time):<br><br>
 
     <li><a name="ESPEasy_set_rgb">rgb</a><br>
-      EXPERIMENTAL, may be removed in later version if a usable rgb plugin is
+      EXPERIMENTAL, may be removed in later versions if a usable rgb plugin is
       available.<br>
       Used to control a rgb light.<br>
       You have to set attribute <a href="#ESPEasy_rgbGPIOs">rgbGPIOs</a> to enable this feature. Default
@@ -2737,6 +2819,16 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       Possible values: RGB,HSV,HSVp<br>
       Default: HSVp</li><br>
 
+    <li><a name="ESPEasy_colorpickerCTcw">colorpickerCTcw</a><br>
+      Used to select ct colorpicker's cold white color temperature in Kelvin<br>
+      Possible values: &gt; colorpickerCTww<br>
+      Default: 6000</li><br>
+
+    <li><a name="ESPEasy_colorpickerCTww">colorpickerCTww</a><br>
+      Used to select ct colorpicker's warm white color temperature in Kelvin<br>
+      Possible values: &lt; colorpickerCTcw<br>
+      Default: 2000</li><br>
+
     <li><a name="">disable</a><br>
       Used to disable device<br>
       Possible values: 0,1<br>
@@ -2751,6 +2843,14 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
     <li><a href="#IODev">IODev</a><br>
       Used to select I/O device (ESPEasy Bridge).
       </li><br>
+
+    <li><a name="">mapLightCmds</a><br>
+      Enable the following commands and map them to the specified ESPEasy
+      command: rgb, ct, pct, on, off, toggle<br>
+      Needed if you want to use FHEM's colorpickers to control a rgb/ct ESPEasy
+      plugin.
+      required values: <code>a valid set command</code></li><br>
+      eg. <code>attr &lt;esp&gt; mapLightCmds Lights</code>
 
     <li><a name="">presenceCheck</a><br>
       Used to enable/disable presence check for ESPs<br>

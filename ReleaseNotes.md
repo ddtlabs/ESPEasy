@@ -139,6 +139,8 @@
        - experimental commands rgb, hsv, ct, ...
        - changed resendFailedCmd default to be disabled
        - changed maxHttpSessions default to 3
+0.7.9  - Added attr mapLightCmds: enable cmds like rgb, ct... and map them to an ESPEasy command
+0.8.0  - Added attrs colorpickerCTww + colorpickerCTcw to select colorpickers ww-cw range
 
 
 ```
