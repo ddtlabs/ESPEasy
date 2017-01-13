@@ -1,4 +1,4 @@
-# $Id: 34_ESPEasy.pm 80 1970-01-01 00:00:00Z dev0 $
+# $Id: 34_ESPEasy.pm 81 1970-01-01 00:00:00Z dev0 $
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 /w ESPEasy
@@ -42,7 +42,7 @@ use Color;
 # ------------------------------------------------------------------------------
 # global/default values
 # ------------------------------------------------------------------------------
-my $module_version    = 0.80;       # Version of this module
+my $module_version    = 0.81;       # Version of this module
 my $minEEBuild        = 128;        # informational
 my $minJsonVersion    = 1.02;       # checked in received data
 
@@ -77,10 +77,14 @@ my %ESPEasy_setCmds = (
   "irsend"         => "3",
   "status"         => "2",
   "raw"            => "1",
+  "reboot"         => "0",
+  "erase"          => "0",
+  "reset"          => "0",
   "statusrequest"  => "0", 
   "clearreadings"  => "0",
   "help"           => "1",
   "lights"         => "1",
+  "fastled"        => "1",
 #experimental
 #  "rgb"            => "1",
 #  "pct"            => "1",
@@ -120,17 +124,21 @@ my %ESPEasy_setCmdsUsage = (
   #https://forum.fhem.de/index.php/topic,55728.msg530220.html#msg530220
   "irsend"         => "irsend <protocol> <code> <length>",
   "raw"            => "raw <esp_comannd> <...>",
+  "reboot"         => "reboot",
+  "erase"          => "erase",
+  "reset"          => "reset",
   "statusrequest"  => "statusRequest",
   "clearreadings"  => "clearReadings",
   "help"           => "help <".join("|", sort keys %ESPEasy_setCmds).">",
+  "lights"         => "light <rgb|ct|pct|on|off|toggle> [color] [fading time] [pct]",
+  "fastled"        => "fastled <params>",
 #experimental
-  "lights"          => "light <rgb|ct|pct|on|off|toggle> [color] [fading time] [pct]",
-  "rgb"            => "rgb <rrggbb>",
-  "pct"            => "pct <pct>",
-  "ct"             => "ct <ct>",
-  "on"             => "on",
-  "off"            => "off",
-  "toggle"         => "toggle"
+  "rgb"            => "rgb <rrggbb> [fading time]",
+  "pct"            => "pct <pct> [fading time]",
+  "ct"             => "ct <ct> [fading time] [pct bri]",
+  "on"             => "on [fading time]",
+  "off"            => "off [fading time]",
+  "toggle"         => "toggle [fading time]"
 
 #  "hsv"            => "hsv <hue> <sat> <bri>",
 #  "hue"            => "hue <hue>",
@@ -1258,11 +1266,11 @@ sub ESPEasy_httpReq($$$$$$@)
   $params[0] = ",".$params[0] if defined $params[0];
   my $plist = join(",",@params);
 
-  my $url = "http://".$host.":".$port."/control?cmd=".$cmd.$plist;
+  my $path = ($cmd =~ m/(reboot|reset|erase)/i) ? "/?cmd=" : "/control?cmd=";
+  my $url = "http://".$host.":".$port.$path.$cmd.$plist;
   
   # there is already a log entry with verbose 3 from device
   Log3 $name, 4, "$type $name: Send $cmd$plist to $host for ident $ident" if ($cmd !~ m/^(status)/);
-
 
   my $timeout = AttrVal($name,"httpReqTimeout",$d_httpReqTimeout);
   my $httpParams = {
@@ -2660,12 +2668,12 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       cmd: rgb, ct, pct, on, off, toggle<br>
       color: rrggbb (if rgb) or color temperature in Kelvin (if ct)<br>
       fading time: time in seconds<br>
-      eg. <code>set &lt;esp&gt; rgb aa00aa</code><br>
-      eg. <code>set &lt;esp&gt; ct 3200</code><br>
-      eg. <code>set &lt;esp&gt; pct 50</code><br>
-      eg. <code>set &lt;esp&gt; on</code><br>
-      eg. <code>set &lt;esp&gt; off</code><br>
-      eg. <code>set &lt;esp&gt; toggle</code><br>
+      eg. <code>set &lt;esp&gt; lights rgb aa00aa</code><br>
+      eg. <code>set &lt;esp&gt; lights ct 3200</code><br>
+      eg. <code>set &lt;esp&gt; lights pct 50</code><br>
+      eg. <code>set &lt;esp&gt; lights on</code><br>
+      eg. <code>set &lt;esp&gt; lights off</code><br>
+      eg. <code>set &lt;esp&gt; lights toggle</code><br>
       </li><br>
       
     <li><a name="">Pulse</a><br>
@@ -2747,8 +2755,25 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       eg: <code>gpio 13</code>
       </li><br>
       
-    <b>Experimental</b> (The following commands can be changed or removed at
-       any time):<br><br>
+    <b>Administrative commands</b> (be careful):<br><br>
+
+    <li><a name="">erase</a><br>
+      Wipe out ESP flash memory<br>
+      required values: <code>none</code><br>
+      </li><br>
+
+    <li><a name="">reboot</a><br>
+      Used to reboot your ESP<br>
+      required values: <code>none</code><br>
+      </li><br>
+      
+    <li><a name="">reset</a><br>
+      Do a factory reset on the ESP<br>
+      required values: <code>none</code><br>
+      </li><br>
+      
+    <b>Experimental commands</b> (The following commands can be changed or
+      removed at any time):<br><br>
 
     <li><a name="ESPEasy_set_rgb">rgb</a><br>
       EXPERIMENTAL, may be removed in later versions if a usable rgb plugin is

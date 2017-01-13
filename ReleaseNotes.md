@@ -141,6 +141,8 @@
        - changed maxHttpSessions default to 3
 0.7.9  - Added attr mapLightCmds: enable cmds like rgb, ct... and map them to an ESPEasy command
 0.8.0  - Added attrs colorpickerCTww + colorpickerCTcw to select colorpickers ww-cw range
+0.8.1  - commandref: lights command corrected
+       - added commands: reboot, reset, ease. Use with care!
 
 
 ```
