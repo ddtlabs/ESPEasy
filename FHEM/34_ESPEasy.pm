@@ -1,11 +1,10 @@
-# $Id: 34_ESPEasy.pm 81 1970-01-01 00:00:00Z dev0 $
+# $Id: 
 ################################################################################
 #
 #  34_ESPEasy.pm is a FHEM Perl module to control ESP8266 /w ESPEasy
 #
-#  Copyright 2016 by dev0 
+#  Copyright 2017 by dev0 
 #  FHEM forum: https://forum.fhem.de/index.php?action=profile;u=7465
-#  Github: https://github.com/ddtlabs
 #
 #  This file is part of FHEM.
 #
@@ -23,11 +22,6 @@
 #  along with fhem.  If not, see <http://www.gnu.org/licenses/>.
 #
 ################################################################################
-#
-# ESPEasy change log can be found here: https://github.com/ddtlabs/ESPEasy
-#
-################################################################################
-
 
 package main;
 
@@ -42,7 +36,7 @@ use Color;
 # ------------------------------------------------------------------------------
 # global/default values
 # ------------------------------------------------------------------------------
-my $module_version    = 0.81;       # Version of this module
+my $module_version    = 0.82;       # Version of this module
 my $minEEBuild        = 128;        # informational
 my $minJsonVersion    = 1.02;       # checked in received data
 
@@ -84,20 +78,7 @@ my %ESPEasy_setCmds = (
   "clearreadings"  => "0",
   "help"           => "1",
   "lights"         => "1",
-  "fastled"        => "1",
-#experimental
-#  "rgb"            => "1",
-#  "pct"            => "1",
-#  "ct"             => "1",
-#  "on"             => "0",
-#  "off"            => "0",
-#  "toggle"         => "0",
-
-#  "hsv"            => "1",
-#  "hue"            => "1",
-#  "sat"            => "1",
-#  "bri"            => "1",
-#  "xy"             => "1",
+  "dots"           => "1",
 );
 
 # ------------------------------------------------------------------------------
@@ -131,8 +112,9 @@ my %ESPEasy_setCmdsUsage = (
   "clearreadings"  => "clearReadings",
   "help"           => "help <".join("|", sort keys %ESPEasy_setCmds).">",
   "lights"         => "light <rgb|ct|pct|on|off|toggle> [color] [fading time] [pct]",
-  "fastled"        => "fastled <params>",
-#experimental
+  "dots"           => "dots <params>",
+
+  #Lights
   "rgb"            => "rgb <rrggbb> [fading time]",
   "pct"            => "pct <pct> [fading time]",
   "ct"             => "ct <ct> [fading time] [pct bri]",
@@ -140,11 +122,6 @@ my %ESPEasy_setCmdsUsage = (
   "off"            => "off [fading time]",
   "toggle"         => "toggle [fading time]"
 
-#  "hsv"            => "hsv <hue> <sat> <bri>",
-#  "hue"            => "hue <hue>",
-#  "sat"            => "sat <sat>",
-#  "bri"            => "bri <bri>",
-#  "xy"             => "xy <xy>",
 );
 
 # ------------------------------------------------------------------------------
@@ -318,6 +295,7 @@ sub ESPEasy_Define($$)  # only called when defined, not on reload.
     $hash->{MAX_HTTP_SESSIONS} = $d_maxHttpSessions;
     $hash->{MAX_QUEUE_SIZE}    = $d_maxQueueSize;
 
+    ESPEasy_removeGit($hash);
   } 
 
   #--- DEVICE -------------------------------------------------
@@ -1280,7 +1258,7 @@ sub ESPEasy_httpReq($$$$$$@)
     httpversion => "1.0",
     hideurl     => 0,
     method      => "GET",
-    hash        => $hash,      # passthrought to parseFn
+    hash        => $hash,
     cmd         => $orgCmd,    # passthrought to parseFn
     plist       => $orgParams, # passthrought to parseFn
     host        => $host,      # passthrought to parseFn
@@ -2326,12 +2304,47 @@ sub ESPEasy_isHostname($)
 # ------------------------------------------------------------------------------
 sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
 
+# ------------------------------------------------------------------------------
+sub ESPEasy_removeGit($)
+{
+  my ($hash) = @_;
+  my $file = $attr{global}{modpath}."/ESPEasy.txt";
+
+  if (-f $file) {
+    unlink $file;
+    
+    my $controls = $attr{global}{modpath}."/FHEM/controls.txt";
+    open(FH, $controls) || return "Can't open $controls: $!";
+    my $ret = join("", <FH>);
+    close(FH);
+    
+    if ($ret =~ m/controls_ESPEasy.txt/) {
+      my ($name,$type) = ($hash->{NAME},$hash->{TYPE});
+      Log3 $name, 1, "";
+      Log3 $name, 1, "================================================================================";
+      Log3 $name, 1, "";
+      Log3 $name, 1, "ESPEasy is part of the official FHEM distribution.";
+      Log3 $name, 1, "";
+      Log3 $name, 1, "Please remove ESPEasy Github repository from FHEM update by using the following";
+      Log3 $name, 1, "FHEM command: ";
+      Log3 $name, 1, "";
+      Log3 $name, 1, "update delete https://raw.githubusercontent.com/ddtlabs/ESPEasy/master/controls_ESPEasy.txt";
+      Log3 $name, 1, "";
+      Log3 $name, 1, "================================================================================";
+      Log3 $name, 1, "";
+    }
+  }
+
+  return undef;
+}
+
+
 1;
 
 =pod
 =item device
-=item summary Control and access to Espressif ESP8266 WLAN-SoC w/ ESPEasy
-=item summary_DE Steuerung und Zugriff auf Espressif ESP8266 WLAN-SoC mit ESPEasy
+=item summary Control and access to ESPEasy (Espressif ESP8266 WLAN-SoC)
+=item summary_DE Steuerung und Zugriff auf ESPEasy (Espressif ESP8266 WLAN-SoC)
 =begin html
 
 <a name="ESPEasy"></a>
@@ -2874,8 +2887,8 @@ sub ESPEasy_whoami()  {return (split('::',(caller(1))[3]))[1] || '';}
       command: rgb, ct, pct, on, off, toggle<br>
       Needed if you want to use FHEM's colorpickers to control a rgb/ct ESPEasy
       plugin.
-      required values: <code>a valid set command</code></li><br>
-      eg. <code>attr &lt;esp&gt; mapLightCmds Lights</code>
+      required values: <code>a valid set command</code><br>
+      eg. <code>attr &lt;esp&gt; mapLightCmds Lights</code></li><br>
 
     <li><a name="">presenceCheck</a><br>
       Used to enable/disable presence check for ESPs<br>
