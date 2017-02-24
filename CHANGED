@@ -1,1 +1,7 @@
-0.8.2  - preparation for FHEM svn check in
+!!! ESPEasy is part of the official FHEM update now !!!
+
+Please remove the ESPEasy Github repository from FHEM
+update by using the following command:
+
+update delete https://raw.githubusercontent.com/ddtlabs/ESPEasy/master/controls_ESPEasy.txt
+

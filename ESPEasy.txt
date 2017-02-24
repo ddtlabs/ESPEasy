@@ -1,0 +1,11 @@
+================================================================================
+
+ESPEasy is part of the official FHEM distribution now.
+
+Please remove ESPEasy Github repository from FHEM update by using the following
+FHEM command:
+
+update delete https://raw.githubusercontent.com/ddtlabs/ESPEasy/master/controls_ESPEasy.txt
+
+================================================================================
+

@@ -143,6 +143,7 @@
 0.8.0  - Added attrs colorpickerCTww + colorpickerCTcw to select colorpickers ww-cw range
 0.8.1  - commandref: lights command corrected
        - added commands: reboot, reset, ease. Use with care!
+0.8.2  - preparation for svn.fhem.de check in
 
-
+1.0.0  - Release 1.0 has been published on svn.fhem.de. Use FHEM's update command to get the current version
 ```
